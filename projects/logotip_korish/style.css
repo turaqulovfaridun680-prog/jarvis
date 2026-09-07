@@ -1,0 +1,129 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #f8fafc;
+  font-family: Inter, Arial, sans-serif;
+  background: radial-gradient(circle at top, #263564 0%, #10172b 42%, #070a12 100%);
+}
+
+.card {
+  width: min(100%, 520px);
+  padding: 28px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 28px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(18px);
+}
+
+.preview {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 30px;
+  border: 1px dashed rgba(139, 92, 246, 0.6);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(34, 211, 238, 0.08));
+}
+
+.preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 24px rgba(0, 0, 0, 0.25));
+}
+
+.placeholder span {
+  width: 92px;
+  height: 92px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  border-radius: 26px;
+  color: white;
+  font-size: 42px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+  box-shadow: 0 15px 35px rgba(139, 92, 246, 0.35);
+}
+
+.placeholder p {
+  margin: 0;
+  color: #94a3b8;
+}
+
+h1 {
+  margin: 26px 0 10px;
+  font-size: clamp(26px, 5vw, 36px);
+}
+
+.description {
+  margin: 0 auto 24px;
+  color: #aeb9cc;
+  line-height: 1.6;
+}
+
+#logoInput {
+  display: none;
+}
+
+.upload-button,
+.remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.upload-button {
+  color: white;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.3);
+}
+
+.remove-button {
+  margin-left: 10px;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.upload-button:hover,
+.remove-button:hover {
+  transform: translateY(-2px);
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 18px;
+  }
+
+  .preview {
+    min-height: 230px;
+  }
+
+  .upload-button,
+  .remove-button {
+    width: 100%;
+  }
+
+  .remove-button {
+    margin: 10px 0 0;
+  }
+}

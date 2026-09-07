@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Tajriba, qiziqish va imkoniyatlaringiz asosida mos biznes yo'nalishini aniqlang.">
+  <title>Biznes Yo'nalish AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-shape shape-one"></div>
+  <div class="background-shape shape-two"></div>
+
+  <header class="header">
+    <a href="#" class="logo"><span>J</span> Biznes AI</a>
+    <nav>
+      <a href="#assessment">Tahlil</a>
+      <a href="#how">Qanday ishlaydi?</a>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Tungi rejim">☾</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="badge">✦ Shaxsiy biznes yo'nalish tahlili</div>
+        <h1>Sizga mos biznesni <span>aniqroq tanlang</span></h1>
+        <p>Bilimlaringiz, tajribangiz, sarmoyangiz va maqsadlaringizni kiriting. Tizim sizga mos yo'nalish, boshlash rejasi va xavflarni ko'rsatadi.</p>
+        <a class="primary-button" href="#assessment">Tahlilni boshlash <b>→</b></a>
+        <div class="hero-stats">
+          <div><strong>5 daqiqa</strong><small>Tahlil vaqti</small></div>
+          <div><strong>3 ta</strong><small>Mos yo'nalish</small></div>
+          <div><strong>30 kun</strong><small>Harakat rejasi</small></div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="glass-card main-card">
+          <div class="card-top"><span>Biznes salohiyati</span><b>Yuqori</b></div>
+          <div class="score-ring"><div><strong>87</strong><small>/100</small></div></div>
+          <div class="mini-progress"><span><i style="width:92%"></i></span><small>Ko'nikma mosligi</small></div>
+          <div class="mini-progress"><span><i style="width:78%"></i></span><small>Bozor imkoniyati</small></div>
+          <div class="mini-progress"><span><i style="width:71%"></i></span><small>Moliyaviy tayyorgarlik</small></div>
+        </div>
+        <div class="floating-card float-one">📈 <span><b>O'sish rejasi</b><small>Tayyor</small></span></div>
+        <div class="floating-card float-two">💡 <span><b>Yangi g'oya</b><small>Topildi</small></span></div>
+      </div>
+    </section>
+
+    <section class="how" id="how">
+      <div class="section-heading">
+        <small>JARAYON</small>
+        <h2>Qanday ishlaydi?</h2>
+        <p>To'g'ri qaror uchun uchta oddiy qadam.</p>
+      </div>
+      <div class="steps">
+        <article><span>01</span><div class="step-icon">🧩</div><h3>Ma'lumot kiriting</h3><p>Tajriba, qiziqish, sarmoya va bo'sh vaqtingizni ko'rsating.</p></article>
+        <article><span>02</span><div class="step-icon">⚙️</div><h3>Tahlil qiling</h3><p>Algoritm javoblaringizni biznes modellari bilan solishtiradi.</p></article>
+        <article><span>03</span><div class="step-icon">🚀</div><h3>Harakatni boshlang</h3><p>Mos yo'nalish va 30 kunlik amaliy rejangizni oling.</p></article>
+      </div>
+    </section>
+
+    <section class="assessment" id="assessment">
+      <div class="section-heading left">
+        <small>SHAXSIY TAHLIL</small>
+        <h2>O'zingiz haqingizda ayting</h2>
+        <p>Qancha aniq ma'lumot bersangiz, tavsiya shuncha foydali bo'ladi.</p>
+      </div>
+
+      <div class="assessment-layout">
+        <form class="form-card" id="businessForm">
+          <div class="form-progress"><div id="progressBar"></div></div>
+          <div class="form-row">
+            <label>Ismingiz
+              <input type="text" id="name" placeholder="Masalan: Aziz" required>
+            </label>
+            <label>Yoshingiz
+              <input type="number" id="age" min="16" max="80" placeholder="25" required>
+            </label>
+          </div>
+
+          <label>Asosiy tajriba yoki kasbingiz
+            <select id="experience" required>
+              <option value="">Yo'nalishni tanlang</option>
+              <option value="tech">IT, dasturlash yoki dizayn</option>
+              <option value="sales">Savdo va mijozlar bilan ishlash</option>
+              <option value="craft">Ishlab chiqarish yoki hunarmandchilik</option>
+              <option value="education">Ta'lim va konsultatsiya</option>
+              <option value="food">Oziq-ovqat va xizmat ko'rsatish</option>
+              <option value="beginner">Hozircha tajribam kam</option>
+            </select>
+          </label>
+
+          <label>Qiziqishlaringiz
+            <textarea id="interests" rows="3" placeholder="Masalan: texnologiya, savdo, bolalarga ta'lim berish..." required></textarea>
+          </label>
+
+          <div class="form-row">
+            <label>Boshlang'ich sarmoya
+              <select id="budget" required>
+                <option value="">Tanlang</option>
+                <option value="low">0 – 5 mln so'm</option>
+                <option value="medium">5 – 30 mln so'm</option>
+                <option value="high">30 mln so'mdan ko'p</option>
+              </select>
+            </label>
+            <label>Haftalik bo'sh vaqt
+              <select id="time" required>
+                <option value="">Tanlang</option>
+                <option value="part">5 – 15 soat</option>
+                <option value="medium">15 – 30 soat</option>
+                <option value="full">To'liq vaqt</option>
+              </select>
+            </label>
+          </div>
+
+          <label>Asosiy maqsadingiz
+            <select id="goal" required>
+              <option value="">Maqsadni tanlang</option>
+              <option value="extra">Qo'shimcha daromad</option>
+              <option value="stable">Barqaror asosiy biznes</option>
+              <option value="growth">Tez o'sadigan katta loyiha</option>
+              <option value="freedom">Erkin vaqt va masofaviy ish</option>
+            </select>
+          </label>
+
+          <label>Qaysi format sizga qulay?
+            <div class="radio-group">
+              <label><input type="radio" name="format" value="online" checked><span>🌐 Onlayn</span></label>
+              <label><input type="radio" name="format" value="offline"><span>🏪 Oflayn</span></label>
+              <label><input type="radio" name="format" value="hybrid"><span>🔄 Aralash</span></label>
+            </div>
+          </label>
+
+          <button class="submit-button" type="submit"><span>Tavsiyani olish</span><b>→</b></button>
+        </form>
+
+        <aside class="tips-card">
+          <div class="tips-icon">✦</div>
+          <h3>Kuchli biznes nimadan boshlanadi?</h3>
+          <ul>
+            <li><span>✓</span> Siz yaxshi biladigan muammo</li>
+            <li><span>✓</span> Pul to'lashga tayyor mijoz</li>
+            <li><span>✓</span> Kichik va tezkor sinov</li>
+            <li><span>✓</span> O'lchanadigan natija</li>
+          </ul>
+          <div class="quote">“Avval mukammal mahsulot emas, haqiqiy talab borligini isbotlang.”</div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="results hidden" id="results">
+      <div class="result-head">
+        <div><small>SIZ UCHUN TAYYORLANDI</small><h2 id="resultTitle">Shaxsiy biznes tavsiyangiz</h2></div>
+        <button id="restartButton" type="button">↻ Qayta tahlil</button>
+      </div>
+
+      <div class="result-grid">
+        <article class="recommendation featured">
+          <div class="rank">ENG MOS YO'NALISH</div>
+          <div class="recommendation-icon" id="mainIcon">💻</div>
+          <h3 id="mainBusiness">Raqamli xizmatlar agentligi</h3>
+          <p id="mainDescription"></p>
+          <div class="match"><div><span>Moslik darajasi</span><b id="matchScore">91%</b></div><div class="match-line"><i id="matchLine"></i></div></div>
+        </article>
+        <article class="recommendation">
+          <div class="rank secondary">2-TAVSIYA</div>
+          <div class="recommendation-icon" id="secondIcon">🎓</div>
+          <h3 id="secondBusiness">Onlayn ta'lim</h3>
+          <p id="secondDescription"></p>
+        </article>
+        <article class="recommendation">
+          <div class="rank secondary">3-TAVSIYA</div>
+          <div class="recommendation-icon" id="thirdIcon">🛒</div>
+          <h3 id="thirdBusiness">Nishali onlayn savdo</h3>
+          <p id="thirdDescription"></p>
+        </article>
+      </div>
+
+      <div class="plan-card">
+        <div class="plan-heading"><div><small>AMALIY QADAMLAR</small><h3>30 kunlik boshlash rejasi</h3></div><span>🗓️</span></div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+
+      <div class="warning-card">
+        <span>⚠️</span><div><h3>Muhim tavsiya</h3><p id="riskText"></p></div>
+      </div>
+      <button class="print-button" id="printButton" type="button">Natijani saqlash / chop etish</button>
+    </section>
+  </main>
+
+  <footer><a href="#" class="logo"><span>J</span> Biznes AI</a><p>G'oyadan natijagacha — ongli qadamlar bilan.</p><small>© 2025 Barcha huquqlar himoyalangan.</small></footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

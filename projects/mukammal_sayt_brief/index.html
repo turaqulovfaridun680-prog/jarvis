@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Mukammal sayt yaratish uchun interaktiv savolnoma">
+  <title>Sayt yaratish bo‘yicha savolnoma</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container">
+    <section class="intro">
+      <span class="badge">JARVIS Developer</span>
+      <h1>Keling, mukammal saytingizni birga rejalashtiramiz</h1>
+      <p>Quyidagi savollarga javob bering. Javoblaringiz asosida sizga mos, zamonaviy va ishlaydigan sayt yarataman.</p>
+    </section>
+
+    <section class="form-card">
+      <div class="progress-wrapper">
+        <div class="progress-info">
+          <span id="stepText">1-qadam / 4</span>
+          <span id="progressPercent">25%</span>
+        </div>
+        <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+      </div>
+
+      <form id="briefForm">
+        <div class="form-step active" data-step="1">
+          <span class="step-label">01 — Asosiy ma’lumot</span>
+          <h2>Avval loyihangiz bilan tanishamiz</h2>
+
+          <label>Ismingiz yoki kompaniya nomi
+            <input type="text" name="name" placeholder="Masalan: Azizbek / Nova Studio" required>
+          </label>
+
+          <label>Qanday sayt kerak?
+            <select name="siteType" required>
+              <option value="">Tanlang</option>
+              <option>Biznes sayti</option>
+              <option>Internet do‘kon</option>
+              <option>Portfolio</option>
+              <option>Landing page</option>
+              <option>Ta’lim platformasi</option>
+              <option>Blog yoki yangiliklar sayti</option>
+              <option>Bron qilish xizmati</option>
+              <option>Boshqa</option>
+            </select>
+          </label>
+
+          <label>Saytning asosiy maqsadi nima?
+            <textarea name="goal" rows="4" placeholder="Masalan: xizmatlarimni tanishtirish, mijozlardan ariza olish va savdoni oshirish" required></textarea>
+          </label>
+        </div>
+
+        <div class="form-step" data-step="2">
+          <span class="step-label">02 — Auditoriya va sahifalar</span>
+          <h2>Sayt kimlar uchun yaratiladi?</h2>
+
+          <label>Maqsadli auditoriyangiz
+            <textarea name="audience" rows="3" placeholder="Yoshi, qiziqishi, hududi yoki kasbi" required></textarea>
+          </label>
+
+          <fieldset>
+            <legend>Qaysi sahifalar kerak?</legend>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" name="pages" value="Bosh sahifa"><span>Bosh sahifa</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Biz haqimizda"><span>Biz haqimizda</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Xizmatlar"><span>Xizmatlar</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Mahsulotlar"><span>Mahsulotlar</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Portfolio"><span>Portfolio</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Blog"><span>Blog</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="FAQ"><span>FAQ</span></label>
+              <label class="check"><input type="checkbox" name="pages" value="Aloqa"><span>Aloqa</span></label>
+            </div>
+          </fieldset>
+
+          <label>Qo‘shimcha sahifalar
+            <input type="text" name="extraPages" placeholder="Masalan: Narxlar, Jamoa, Hamkorlar">
+          </label>
+        </div>
+
+        <div class="form-step" data-step="3">
+          <span class="step-label">03 — Dizayn va funksiyalar</span>
+          <h2>Sayt qanday ko‘rinishi va ishlashi kerak?</h2>
+
+          <label>Dizayn uslubi
+            <select name="style" required>
+              <option value="">Tanlang</option>
+              <option>Minimalistik va zamonaviy</option>
+              <option>Premium va hashamatli</option>
+              <option>Yorqin va kreativ</option>
+              <option>Korporativ va jiddiy</option>
+              <option>Texnologik va futuristik</option>
+              <option>Sodda va samimiy</option>
+            </select>
+          </label>
+
+          <label>Asosiy ranglar yoki brend ranglari
+            <input type="text" name="colors" placeholder="Masalan: qora, oq va binafsha">
+          </label>
+
+          <fieldset>
+            <legend>Kerakli funksiyalar</legend>
+            <div class="check-grid">
+              <label class="check"><input type="checkbox" name="features" value="Aloqa formasi"><span>Aloqa formasi</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Telegram integratsiyasi"><span>Telegram</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Onlayn to‘lov"><span>Onlayn to‘lov</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Savatcha"><span>Savatcha</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Shaxsiy kabinet"><span>Shaxsiy kabinet</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Qidiruv"><span>Qidiruv</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Ko‘p tillilik"><span>Ko‘p tillilik</span></label>
+              <label class="check"><input type="checkbox" name="features" value="Admin panel"><span>Admin panel</span></label>
+            </div>
+          </fieldset>
+        </div>
+
+        <div class="form-step" data-step="4">
+          <span class="step-label">04 — Yakuniy tafsilotlar</span>
+          <h2>Oxirgi muhim savollar</h2>
+
+          <label>Sizga yoqadigan saytlar bormi?
+            <textarea name="references" rows="3" placeholder="Havolalarni yozing va aynan nimasi yoqishini ayting"></textarea>
+          </label>
+
+          <div class="two-column">
+            <label>Taxminiy muddat
+              <select name="deadline">
+                <option>Aniq muddat yo‘q</option>
+                <option>1 haftagacha</option>
+                <option>2–3 hafta</option>
+                <option>1 oy</option>
+                <option>1 oydan ko‘p</option>
+              </select>
+            </label>
+
+            <label>Taxminiy budjet
+              <select name="budget">
+                <option>Hali aniqlanmagan</option>
+                <option>1–3 mln so‘m</option>
+                <option>3–7 mln so‘m</option>
+                <option>7–15 mln so‘m</option>
+                <option>15 mln so‘mdan yuqori</option>
+              </select>
+            </label>
+          </div>
+
+          <label>Qo‘shimcha istak va izohlaringiz
+            <textarea name="notes" rows="4" placeholder="Sayt haqida qolgan barcha fikrlaringizni yozing"></textarea>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" id="prevBtn" class="button secondary" disabled>Orqaga</button>
+          <button type="button" id="nextBtn" class="button primary">Davom etish</button>
+          <button type="submit" id="submitBtn" class="button primary hidden">Natijani tayyorlash</button>
+        </div>
+      </form>
+
+      <section id="result" class="result hidden" aria-live="polite">
+        <div class="result-icon">✓</div>
+        <h2>Brief tayyor!</h2>
+        <p>Quyidagi ma’lumotni nusxalab, menga yuboring. Shundan so‘ng saytingizni yaratishni boshlaymiz.</p>
+        <textarea id="summary" rows="15" readonly></textarea>
+        <div class="result-actions">
+          <button id="copyBtn" class="button primary">Briefni nusxalash</button>
+          <button id="restartBtn" class="button secondary">Qayta to‘ldirish</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

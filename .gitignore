@@ -1,0 +1,14 @@
+.env
+google_credentials.json
+*.db
+*.db-shm
+*.db-wal
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.pytest_cache/
+.ruff_cache/
+logs/
+archive/legacy/
+backups/

@@ -1,0 +1,18 @@
+[Unit]
+Description=SORO JARVIS Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarvis
+WorkingDirectory=/opt/soro-jarvis
+EnvironmentFile=/opt/soro-jarvis/.env
+ExecStart=/opt/soro-jarvis/venv/bin/python -m jarvis_bot
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

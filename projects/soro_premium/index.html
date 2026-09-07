@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang='uz'>
+<head>
+  <meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <meta name='description' content='SORO — Samarqanddagi premium shirinliklar korxonasi. Har ushog‘ida rohat.'>
+  <title>SORO — Har ushog‘ida rohat</title>
+  <link rel='preconnect' href='https://fonts.googleapis.com'>
+  <link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
+  <link href='https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Montserrat:wght@400;500;600;700&display=swap' rel='stylesheet'>
+  <link rel='stylesheet' href='style.css'>
+</head>
+<body>
+  <header class='header' id='header'>
+    <div class='container nav-wrap'>
+      <a href='#home' class='logo' aria-label='SORO bosh sahifa'>SORO<span>.</span></a>
+      <button class='menu-btn' id='menuBtn' aria-label='Menyuni ochish' aria-expanded='false'>
+        <span></span><span></span><span></span>
+      </button>
+      <nav class='nav' id='nav'>
+        <a href='#home' class='active'>Bosh sahifa</a>
+        <a href='#about'>Biz haqimizda</a>
+        <a href='#products'>Mahsulotlar</a>
+        <a href='#order'>Buyurtma</a>
+        <a href='#contact'>Aloqa</a>
+      </nav>
+      <a href='#order' class='nav-order'>Buyurtma berish</a>
+    </div>
+  </header>
+
+  <main>
+    <section class='hero' id='home'>
+      <div class='hero-glow glow-one'></div>
+      <div class='hero-glow glow-two'></div>
+      <div class='container hero-grid'>
+        <div class='hero-content reveal'>
+          <div class='eyebrow'>Samarqanddan premium ta’m</div>
+          <h1>SORO</h1>
+          <p class='hero-slogan'>Soro har ushog‘ida rohat</p>
+          <p class='hero-text'>Mehr bilan tayyorlangan nafis shirinliklar. Har bir luqmada sifat, did va unutilmas zavq.</p>
+          <div class='hero-actions'>
+            <a href='#products' class='btn btn-primary'>Mahsulotlarni ko‘rish <span>→</span></a>
+            <a href='#about' class='btn btn-ghost'>Bizning hikoyamiz</a>
+          </div>
+          <div class='hero-stats'>
+            <div><strong>20+</strong><span>Shirinlik turi</span></div>
+            <div><strong>100%</strong><span>Tabiiy masalliqlar</span></div>
+            <div><strong>Har kuni</strong><span>Yangi mahsulot</span></div>
+          </div>
+        </div>
+        <div class='hero-visual reveal'>
+          <div class='hero-image-wrap'>
+            <img src='https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=1000&q=90' alt='SORO premium torti'>
+            <div class='image-badge'><span>✦</span><div><small>Premium sifat</small><b>Qo‘lda tayyorlanadi</b></div></div>
+          </div>
+        </div>
+      </div>
+      <a href='#about' class='scroll-down' aria-label='Pastga o‘tish'>↓</a>
+    </section>
+
+    <section class='about section' id='about'>
+      <div class='container about-grid'>
+        <div class='about-images reveal'>
+          <img class='about-main' src='https://images.unsplash.com/photo-1551024506-0bccd828d307?auto=format&fit=crop&w=900&q=85' alt='Yangi pishirilgan shirinliklar'>
+          <div class='about-card'><strong>Sevgi bilan</strong><span>har kuni yangi tayyorlanadi</span></div>
+        </div>
+        <div class='about-content reveal'>
+          <div class='section-tag'>Biz haqimizda</div>
+          <h2>Ta’mga aylangan <em>mukammallik</em></h2>
+          <p>SORO — an’anaviy retseptlar va zamonaviy qandolatchilik san’atini birlashtirgan premium shirinliklar brendi. Biz har bir mahsulotni saralangan masalliqlar, nozik did va katta mehr bilan tayyorlaymiz.</p>
+          <p>Biz uchun shirinlik oddiy desert emas — u yaqinlaringiz bilan bo‘lishiladigan quvonchli lahzadir.</p>
+          <div class='values'>
+            <div class='value'><span>01</span><div><b>Tabiiy tarkib</b><small>Sifatli va saralangan masalliqlar</small></div></div>
+            <div class='value'><span>02</span><div><b>Noyob retsept</b><small>An’ana va zamonaviylik uyg‘unligi</small></div></div>
+            <div class='value'><span>03</span><div><b>Doim yangi</b><small>Har kuni mehr bilan tayyorlanadi</small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class='products section' id='products'>
+      <div class='container'>
+        <div class='section-heading reveal'>
+          <div><div class='section-tag'>Bizning mahsulotlar</div><h2>Sevimli <em>shirinliklaringiz</em></h2></div>
+          <p>Har bir did uchun alohida ta’m. O‘zingizga yoqqan shirinlikni tanlang va buyurtma bering.</p>
+        </div>
+        <div class='product-filters reveal'>
+          <button class='filter active' data-filter='all'>Barchasi</button>
+          <button class='filter' data-filter='tort'>Tortlar</button>
+          <button class='filter' data-filter='sharq'>Sharqona</button>
+          <button class='filter' data-filter='mini'>Mini desertlar</button>
+        </div>
+        <div class='product-grid'>
+          <article class='product-card reveal' data-category='tort'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1579306194872-64d3b7bac4c2?auto=format&fit=crop&w=700&q=85' alt='Napoleon'><span class='label'>Mashhur</span></div>
+            <div class='product-info'><div><small>Qatlamli tort</small><h3>Napoleon</h3></div><p>Mayin krem va qarsildoq qatlamlarning klassik uyg‘unligi.</p><button class='order-btn' data-product='Napoleon'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+          <article class='product-card reveal' data-category='sharq'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1519915028121-7d3463d20b13?auto=format&fit=crop&w=700&q=85' alt='Paxlava'><span class='label'>Sharqona</span></div>
+            <div class='product-info'><div><small>Yong‘oqli desert</small><h3>Paxlava</h3></div><p>Asal, yong‘oq va yupqa xamirning betakror sharqona ta’mi.</p><button class='order-btn' data-product='Paxlava'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+          <article class='product-card reveal' data-category='tort'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1562440499-64c9a111f713?auto=format&fit=crop&w=700&q=85' alt='Medovik'></div>
+            <div class='product-info'><div><small>Asalli tort</small><h3>Medovik</h3></div><p>Asalli qatlamlar va yengil kremdan tayyorlangan nafis tort.</p><button class='order-btn' data-product='Medovik'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+          <article class='product-card reveal' data-category='mini'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1558326567-98ae2405596b?auto=format&fit=crop&w=700&q=85' alt='Bananchik'><span class='label'>Yangi</span></div>
+            <div class='product-info'><div><small>Mini desert</small><h3>Bananchik</h3></div><p>Banan ifori va mayin xamir uyg‘unligidagi sevimli shirinlik.</p><button class='order-btn' data-product='Bananchik'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+          <article class='product-card reveal' data-category='mini'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=700&q=85' alt='Tvorojnoy'></div>
+            <div class='product-info'><div><small>Tvorogli desert</small><h3>Tvorojnoy</h3></div><p>Yengil, foydali va og‘izda eriydigan tvorogli shirinlik.</p><button class='order-btn' data-product='Tvorojnoy'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+          <article class='product-card reveal' data-category='mini'>
+            <div class='product-image'><img src='https://images.unsplash.com/photo-1571506165871-ee72a35bc9d4?auto=format&fit=crop&w=700&q=85' alt='Ekler'></div>
+            <div class='product-info'><div><small>Kremli desert</small><h3>Ekler</h3></div><p>Nafis krem va shokolad bilan bezatilgan fransuzcha desert.</p><button class='order-btn' data-product='Ekler'>Buyurtma berish <span>＋</span></button></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class='order-section section' id='order'>
+      <div class='container order-box reveal'>
+        <div class='order-copy'>
+          <div class='section-tag light'>Maxsus buyurtma</div>
+          <h2>Bayramingizga <em>shirin kayfiyat</em> qo‘shamiz</h2>
+          <p>Tug‘ilgan kun, to‘y yoki boshqa unutilmas kunlar uchun maxsus desertlarga buyurtma bering.</p>
+          <ul><li>Individual dizayn</li><li>Istalgan o‘lcham va ta’m</li><li>Kelishilgan vaqtda tayyor</li></ul>
+        </div>
+        <form class='order-form' id='orderForm' data-endpoint=''>
+          <h3>Buyurtma qoldiring</h3>
+          <p>Ma’lumotlaringizni kiriting, biz siz bilan bog‘lanamiz.</p>
+          <label>Ismingiz<input type='text' name='name' placeholder='Ismingiz' required></label>
+          <label>Telefon raqamingiz<input type='tel' name='phone' placeholder='+998 90 123 45 67' required></label>
+          <label>Mahsulot
+            <select name='product' id='productSelect' required>
+              <option value=''>Mahsulotni tanlang</option><option>Napoleon</option><option>Paxlava</option><option>Medovik</option><option>Bananchik</option><option>Tvorojnoy</option><option>Ekler</option><option>Maxsus tort</option>
+            </select>
+          </label>
+          <label>Izoh<textarea name='message' rows='3' placeholder='Miqdori, sana yoki istaklaringiz...'></textarea></label>
+          <button type='submit' class='btn btn-gold'>Buyurtmani yuborish <span>→</span></button>
+        </form>
+      </div>
+    </section>
+
+    <section class='contact section' id='contact'>
+      <div class='container'>
+        <div class='section-heading contact-heading reveal'>
+          <div><div class='section-tag'>Aloqa</div><h2>Biz bilan <em>bog‘laning</em></h2></div>
+          <p>Savolingiz yoki buyurtmangiz bormi? Biz sizni mamnuniyat bilan tinglaymiz.</p>
+        </div>
+        <div class='contact-grid reveal'>
+          <div class='contact-item'><span>⌖</span><small>Manzil</small><strong>Samarqand, O‘zbekiston</strong></div>
+          <div class='contact-item'><span>☎</span><small>Telefon</small><strong>+998 90 123 45 67</strong></div>
+          <div class='contact-item'><span>◷</span><small>Ish vaqti</small><strong>Har kuni, 08:00–20:00</strong></div>
+          <div class='contact-item'><span>◎</span><small>Instagram</small><strong>@soro.uz</strong></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class='footer'>
+    <div class='container footer-top'>
+      <div><a href='#home' class='logo footer-logo'>SORO<span>.</span></a><p>Har ushog‘ida rohat.</p></div>
+      <div class='footer-links'><a href='#about'>Biz haqimizda</a><a href='#products'>Mahsulotlar</a><a href='#order'>Buyurtma</a><a href='#contact'>Aloqa</a></div>
+    </div>
+    <div class='container footer-bottom'><span>© <span id='year'></span> SORO. Barcha huquqlar himoyalangan.</span><span>Samarqandda mehr bilan tayyorlandi ♡</span></div>
+  </footer>
+
+  <div class='toast' id='toast'><span>✓</span><div><b>Buyurtmangiz qabul qilindi!</b><small>Tez orada siz bilan bog‘lanamiz.</small></div></div>
+  <button class='to-top' id='toTop' aria-label='Yuqoriga qaytish'>↑</button>
+  <script src='script.js'></script>
+</body>
+</html>
