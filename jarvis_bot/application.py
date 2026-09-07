@@ -210,14 +210,24 @@ def delivery_user(telegram_user_id):
         """, (str(telegram_user_id),)).fetchone()
 
 
+def is_admin_user(user):
+    if not user:
+        return False
+    if str(user.id) in ADMIN_USER_IDS:
+        return True
+    employee = get_employee_by_chat_id(user.id)
+    return bool(
+        employee
+        and str(employee.get("role") or "").strip().lower()
+        in {"admin", "owner", "director", "rahbar"}
+    )
+
+
 def admin_only(handler):
     @wraps(handler)
     async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        if user and str(user.id) in ADMIN_USER_IDS:
-            return await handler(update, context)
-        employee = get_employee_by_chat_id(user.id) if user else None
-        if employee and str(employee.get("role") or "").strip().lower() in {"admin", "owner", "director", "rahbar"}:
+        if is_admin_user(user):
             return await handler(update, context)
         if user and delivery_user(user.id):
             await update.effective_message.reply_text(
@@ -372,7 +382,7 @@ def get_delivery_summary(delivery_id, closed=False):
 
 async def yuklash_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("delivery", None)
-    registered = delivery_user(update.effective_user.id)
+    registered = None if is_admin_user(update.effective_user) else delivery_user(update.effective_user.id)
     if registered:
         context.user_data["delivery"] = {
             "driver_id": registered["driver_id"],

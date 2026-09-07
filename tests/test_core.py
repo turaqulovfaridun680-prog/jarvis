@@ -64,6 +64,12 @@ class DatabaseTests(unittest.TestCase):
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_blank_google_credentials_path_uses_project_default(self):
+        self.assertEqual(
+            application.GOOGLE_CREDENTIALS_FILE,
+            application.BASE_DIR / "google_credentials.json",
+        )
+
     def test_application_builds_all_handler_groups(self):
         app = application.build_application()
         self.assertGreaterEqual(sum(len(items) for items in app.handlers.values()), 15)

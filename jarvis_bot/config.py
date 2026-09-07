@@ -25,7 +25,7 @@ class Settings:
         if value.strip()
     )
     google_credentials_file: Path = Path(
-        os.getenv("GOOGLE_CREDENTIALS_FILE", str(ROOT_DIR / "google_credentials.json"))
+        os.getenv("GOOGLE_CREDENTIALS_FILE") or str(ROOT_DIR / "google_credentials.json")
     )
 
     def validate(self):
