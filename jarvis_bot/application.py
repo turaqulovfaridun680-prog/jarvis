@@ -326,7 +326,7 @@ def product_results_keyboard(rows):
         ])
     buttons.extend([
         [InlineKeyboardButton("➕ Yangi mahsulot", callback_data="ynew")],
-        [InlineKeyboardButton("✅ Yuklashni yakunlash", callback_data="yfinish")],
+        [InlineKeyboardButton("✅ Yuklash tugadi", callback_data="yfinish")],
         [InlineKeyboardButton("❌ Bekor qilish", callback_data="ycancel")],
     ])
     return InlineKeyboardMarkup(buttons)
@@ -381,6 +381,7 @@ def get_delivery_summary(delivery_id, closed=False):
 
 
 async def yuklash_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"/yuklash HANDLER: {__name__}.yuklash_start | {Path(__file__).resolve()}", flush=True)
     context.user_data.pop("delivery", None)
     registered = None if is_admin_user(update.effective_user) else delivery_user(update.effective_user.id)
     if registered:
@@ -388,13 +389,9 @@ async def yuklash_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "driver_id": registered["driver_id"],
             "driver_name": registered["driver_name"],
         }
-        await update.message.reply_text(
-            f"👤 Dastavchik: {registered['driver_name']}\n\n"
-            "🍽 Mashinaga nechta katta list yuklandi?"
-        )
-        return Y_BIG_TRAYS
+        return await yuklash_begin_products(update, context)
     await update.message.reply_text(
-        "🚚 Dastavchikni tanlang:", reply_markup=driver_keyboard()
+        "📦 Mahsulot yuklash boshlandi.\n\n🚚 Dastavchikni tanlang:", reply_markup=driver_keyboard()
     )
     return Y_DRIVER
 
@@ -406,10 +403,30 @@ async def yuklash_driver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with delivery_db() as con:
         driver = con.execute("SELECT name FROM delivery_drivers WHERE id=?", (driver_id,)).fetchone()
     context.user_data["delivery"] = {"driver_id": driver_id, "driver_name": driver["name"]}
-    await query.edit_message_text(
-        f"👤 Dastavchik: {driver['name']}\n\n🍽 Mashinaga nechta katta list yuklandi?"
+    return await yuklash_begin_products(update, context)
+
+
+async def yuklash_begin_products(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = context.user_data["delivery"]
+    with delivery_db() as con:
+        cur = con.execute("""
+            INSERT INTO deliveries(work_date, driver_id, telegram_chat_id, big_trays_loaded)
+            VALUES (?, ?, ?, 0)
+        """, (uz_today(), data["driver_id"], str(update.effective_chat.id)))
+        data["id"] = cur.lastrowid
+        rows = con.execute(
+            "SELECT id, name FROM delivery_products WHERE active=1 ORDER BY name"
+        ).fetchall()
+    text = (
+        "📦 Mahsulot yuklash boshlandi.\n\n"
+        f"👤 Dastavchik: {data['driver_name']}\n\n"
+        "📦 Mahsulotni tanlang yoki nomini yozing.\n"
+        "Yangi mahsulot uchun «yangi» deb yozing.\n\n"
+        "Yakunlash uchun «Yuklash tugadi» tugmasini bosing yoki /tayyor yozing."
     )
-    return Y_BIG_TRAYS
+    target = update.callback_query.edit_message_text if update.callback_query else update.message.reply_text
+    await target(text, reply_markup=product_results_keyboard(rows))
+    return Y_PRODUCT_SEARCH
 
 
 async def yuklash_big_trays(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -422,17 +439,15 @@ async def yuklash_big_trays(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return Y_BIG_TRAYS
     data = context.user_data["delivery"]
     with delivery_db() as con:
-        cur = con.execute("""
-            INSERT INTO deliveries(work_date, driver_id, telegram_chat_id, big_trays_loaded)
-            VALUES (?, ?, ?, ?)
-        """, (uz_today(), data["driver_id"], str(update.effective_chat.id), qty))
-        data["id"] = cur.lastrowid
-    await update.message.reply_text(
-        "🔎 Mahsulot nomi yoki bosh harfini yozing.\n"
-        "Masalan: B yoki BANANCHIK\n\n"
-        "Yangi mahsulot uchun «yangi» deb yozing."
-    )
-    return Y_PRODUCT_SEARCH
+        con.execute(
+            "UPDATE deliveries SET big_trays_loaded=?, status='OPEN' WHERE id=?",
+            (qty, data["id"]),
+        )
+    text = get_delivery_summary(data["id"])
+    await update.message.reply_text(text)
+    await send_delivery_channel(context, text)
+    context.user_data.pop("delivery", None)
+    return ConversationHandler.END
 
 
 async def yuklash_product_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -451,7 +466,7 @@ async def yuklash_product_search(update: Update, context: ContextTypes.DEFAULT_T
             "❌ Mahsulot topilmadi.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ Yangi mahsulot", callback_data="ynew")],
-                [InlineKeyboardButton("✅ Yuklashni yakunlash", callback_data="yfinish")],
+                [InlineKeyboardButton("✅ Yuklash tugadi", callback_data="yfinish")],
             ]),
         )
         return Y_PRODUCT_SEARCH
@@ -464,13 +479,13 @@ async def yuklash_product_search(update: Update, context: ContextTypes.DEFAULT_T
 
 async def yuklash_product_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    if query.data == "yfinish":
+        return await yuklash_finish(update, context)
     await query.answer()
     data = query.data
     if data == "ynew":
         await query.edit_message_text("✍️ Yangi mahsulotning to‘liq nomini yozing:")
         return Y_NEW_PRODUCT
-    if data == "yfinish":
-        return await yuklash_finish(update, context)
     product_id = int(data.split(":")[1])
     with delivery_db() as con:
         product = con.execute("SELECT name FROM delivery_products WHERE id=?", (product_id,)).fetchone()
@@ -533,7 +548,7 @@ async def yuklash_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{UNITS[data['unit']].split(' ', 1)[1].lower()} qo‘shildi.\n\n"
         "🔎 Keyingi mahsulot nomi yoki bosh harfini yozing.",
         reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Yuklashni yakunlash", callback_data="yfinish")],
+            [InlineKeyboardButton("✅ Yuklash tugadi", callback_data="yfinish")],
         ]),
     )
     return Y_PRODUCT_SEARCH
@@ -541,28 +556,23 @@ async def yuklash_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def yuklash_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    target = query.edit_message_text if query else update.message.reply_text
     if query:
         await query.answer()
     data = context.user_data.get("delivery", {})
     delivery_id = data.get("id")
     if not delivery_id:
-        if query:
-            await query.edit_message_text("❌ Faol yuklash topilmadi.")
+        await target("❌ Faol yuklash topilmadi.")
         return ConversationHandler.END
     with delivery_db() as con:
         count = con.execute(
             "SELECT COUNT(*) FROM delivery_items WHERE delivery_id=?", (delivery_id,)
         ).fetchone()[0]
         if count == 0:
-            await query.edit_message_text("❌ Kamida bitta mahsulot kiriting.")
+            await target("❌ Kamida bitta mahsulot kiriting.")
             return Y_PRODUCT_SEARCH
-        con.execute("UPDATE deliveries SET status='OPEN' WHERE id=?", (delivery_id,))
-    text = get_delivery_summary(delivery_id)
-    if query:
-        await query.edit_message_text(text)
-    await send_delivery_channel(context, text)
-    context.user_data.pop("delivery", None)
-    return ConversationHandler.END
+    await target("🍽 Mashina nechta katta list yuklandi?")
+    return Y_BIG_TRAYS
 
 
 async def qoldiq_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -760,6 +770,7 @@ def delivery_handlers():
             Y_DRIVER: [CallbackQueryHandler(yuklash_driver, pattern=r"^yd:\d+$")],
             Y_BIG_TRAYS: [MessageHandler(filters.TEXT & ~filters.COMMAND, yuklash_big_trays)],
             Y_PRODUCT_SEARCH: [
+                CommandHandler("tayyor", yuklash_finish),
                 CallbackQueryHandler(yuklash_product_callback, pattern=r"^(yp:\d+|ynew|yfinish)$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, yuklash_product_search),
             ],
@@ -1741,6 +1752,17 @@ def build_application():
 
 def main():
     app = build_application()
+    for group in app.handlers.values():
+        for handler in group:
+            if isinstance(handler, ConversationHandler):
+                for entry in handler.entry_points:
+                    if isinstance(entry, CommandHandler) and "yuklash" in entry.commands:
+                        callback = entry.callback
+                        print(
+                            f"/yuklash ULANGAN HANDLER: {callback.__module__}.{callback.__name__} | "
+                            f"{Path(callback.__code__.co_filename).resolve()}:{callback.__code__.co_firstlineno}",
+                            flush=True,
+                        )
     print(
         "SORO JARVIS ishga tushdi: "
         "ChatGPT + DOIMIY SQLite xotira + sana + chat_id + ovoz"
