@@ -1552,6 +1552,35 @@ def parse_xomashyo_line(line):
     return {"item_name": item_name, "quantity": quantity, "unit": unit, "price": price}
 
 
+XOMASHYO_SAVOL_SOZLAR = (
+    "qancha", "канча", "неча", "нечта", "nechta", "nechi", "necha",
+    "qanaqa", "қанақа", "qanday", "қандай", "hisobot", "ҳисобот",
+)
+
+
+def xomashyo_savolmi(line):
+    """Qator xomashyo yozuvimi yoki savolmi (masalan "nechi xil xomashyo bor?")."""
+    if XOMASHYO_MONEY_RE.search(line):
+        return False
+    past = line.lower()
+    return "?" in past or any(soz in past for soz in XOMASHYO_SAVOL_SOZLAR)
+
+
+async def xomashyo_savolga_javob(update: Update, savol):
+    with delivery_db() as con:
+        nomlar = [
+            row["item_name"] for row in
+            con.execute("SELECT DISTINCT item_name FROM xomashyo_log").fetchall()
+        ]
+    savol_cf = savol.casefold()
+    nomzodlar = [nom for nom in nomlar if len(nom) >= 3 and nom.casefold() in savol_cf]
+    mos_nom = max(nomzodlar, key=len) if nomzodlar else None
+
+    rows = xomashyo_summary(qidiruv=mos_nom)
+    text = format_xomashyo_report(None, None, rows, mos_nom)
+    await update.message.reply_text(text)
+
+
 async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1563,7 +1592,14 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     work_date = update.message.date.astimezone(timezone(timedelta(hours=5))).strftime("%Y-%m-%d")
 
     rows = []
+    savol_qatori = None
     for line in update.message.text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if xomashyo_savolmi(line):
+            savol_qatori = savol_qatori or line
+            continue
         parsed = parse_xomashyo_line(line)
         if not parsed:
             continue
@@ -1572,31 +1608,38 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parsed["item_name"], parsed["quantity"], parsed["unit"], parsed["price"],
             work_date,
         ))
-    if not rows:
-        return
 
-    with delivery_db() as con:
-        con.executemany("""
-            INSERT INTO xomashyo_log(
-                telegram_chat_id, message_id, sender_name, raw_text,
-                item_name, quantity, unit, price, work_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
-    print(f"XOMASHYO QAYD ETILDI | {kim} | {len(rows)} qator")
+    if rows:
+        with delivery_db() as con:
+            con.executemany("""
+                INSERT INTO xomashyo_log(
+                    telegram_chat_id, message_id, sender_name, raw_text,
+                    item_name, quantity, unit, price, work_date
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, rows)
+        print(f"XOMASHYO QAYD ETILDI | {kim} | {len(rows)} qator")
+
+    if savol_qatori:
+        await xomashyo_savolga_javob(update, savol_qatori)
 
 
 XOMASHYO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def xomashyo_summary(boshlanish, tugash, qidiruv=None):
+def xomashyo_summary(boshlanish=None, tugash=None, qidiruv=None):
     # Guruhlash va qidiruv Python tomonida amalga oshiriladi, chunki SQLite'ning
     # NOCASE kollatsiyasi faqat ASCII harflarni farqlaydi, kirill harflarini emas.
+    query = "SELECT item_name, unit, quantity, price FROM xomashyo_log WHERE 1=1"
+    params = []
+    if boshlanish:
+        query += " AND work_date >= ?"
+        params.append(boshlanish)
+    if tugash:
+        query += " AND work_date <= ?"
+        params.append(tugash)
+    query += " ORDER BY id"
     with delivery_db() as con:
-        rows = con.execute(
-            "SELECT item_name, unit, quantity, price FROM xomashyo_log "
-            "WHERE work_date BETWEEN ? AND ? ORDER BY id",
-            (boshlanish, tugash),
-        ).fetchall()
+        rows = con.execute(query, params).fetchall()
 
     qidiruv_cf = qidiruv.casefold() if qidiruv else None
     groups = {}
@@ -1621,8 +1664,13 @@ def xomashyo_summary(boshlanish, tugash, qidiruv=None):
 
 
 def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None):
-    sana_qismi = boshlanish if boshlanish == tugash else f"{boshlanish} — {tugash}"
-    sarlavha = f"📦 XOMASHYO HISOBOTI — {sana_qismi}"
+    if boshlanish is None and tugash is None:
+        sana_qismi = "barcha vaqt"
+    elif boshlanish == tugash:
+        sana_qismi = boshlanish
+    else:
+        sana_qismi = f"{boshlanish} — {tugash}"
+    sarlavha = f"Bismillahir rohmanir rohim\n\n📦 XOMASHYO HISOBOTI — {sana_qismi}"
     if qidiruv:
         sarlavha += f" (qidiruv: {qidiruv})"
     if not rows:

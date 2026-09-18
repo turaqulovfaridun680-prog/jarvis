@@ -3,7 +3,7 @@ import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from jarvis_bot import application as app
 
@@ -60,6 +60,7 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         message = SimpleNamespace(
             text=text, message_id=1,
             date=datetime(2026, 9, 2, 8, 13, tzinfo=timezone.utc),
+            reply_text=AsyncMock(),
         )
         return SimpleNamespace(
             message=message,
@@ -119,6 +120,31 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("jami 20 кг", self.sent_text)
         self.assertIn("400 000", self.sent_text)
         self.assertIn("2 marta", self.sent_text)
+
+    async def test_question_line_is_not_logged_but_gets_a_reply(self):
+        await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
+
+        update = self.make_update("nechi xil xomashyo bor bu yerda")
+        await app.bozor_guruh(update, SimpleNamespace())
+
+        with app.delivery_db() as con:
+            rows = con.execute("SELECT item_name FROM xomashyo_log").fetchall()
+        self.assertEqual([r["item_name"] for r in rows], ["Творог агро"])
+
+        update.message.reply_text.assert_awaited_once()
+        reply = update.message.reply_text.call_args.args[0]
+        self.assertIn("Bismillahir rohmanir rohim", reply)
+        self.assertIn("Творог агро", reply)
+
+    async def test_mixed_message_logs_entry_and_answers_question(self):
+        text = "Творог агро 18 кг 360 000\nnecha xil xomashyo keldi?"
+        update = self.make_update(text)
+        await app.bozor_guruh(update, SimpleNamespace())
+
+        with app.delivery_db() as con:
+            rows = con.execute("SELECT item_name FROM xomashyo_log").fetchall()
+        self.assertEqual([r["item_name"] for r in rows], ["Творог агро"])
+        update.message.reply_text.assert_awaited_once()
 
     async def test_report_filters_by_search_term(self):
         await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
