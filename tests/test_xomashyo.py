@@ -221,6 +221,47 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Bozorga olib ketilgan summa: 2 800 000", self.sent_text)
         self.assertIn("Ishlatilmay qaytgan (ostatka): 1 800 000", self.sent_text)
 
+    async def test_misspelled_item_name_merges_with_correct_spelling(self):
+        await app.bozor_guruh(self.make_update("Молоко агро 1 кг 350 000"), SimpleNamespace())
+        await app.bozor_guruh(self.make_update("Малоко агро 2 кг 350 000"), SimpleNamespace())
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-02"])
+        await app.xomashyo_hisobot(update, context)
+
+        self.assertEqual(self.sent_text.count("агро"), 1)
+        self.assertIn("jami 3 кг", self.sent_text)
+        self.assertIn("700 000", self.sent_text)
+
+    async def test_driver_name_payment_is_not_a_purchase(self):
+        await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
+        await app.bozor_guruh(self.make_update("Равшан 4 277 000"), SimpleNamespace())
+
+        with app.delivery_db() as con:
+            rows = con.execute("SELECT item_name, category FROM xomashyo_log ORDER BY id").fetchall()
+        self.assertEqual(rows[1]["category"], "boshqa")
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-02"])
+        await app.xomashyo_hisobot(update, context)
+        self.assertIn("Творог агро", self.sent_text)
+        self.assertNotIn("Равшан", self.sent_text)
+        self.assertIn("Boshqa", self.sent_text)
+        self.assertIn("4 277 000", self.sent_text)
+
+    async def test_bozorlik_report_shows_who_took_the_money(self):
+        farid = self.make_update("17 09 2026 бозорлик 2 000 000", first_name="Farid")
+        mulakem = self.make_update("18 09 2026 бозорлик 1 000 000", first_name="Mulakem")
+        await app.bozor_guruh(farid, SimpleNamespace())
+        await app.bozor_guruh(mulakem, SimpleNamespace())
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-02"])
+        await app.xomashyo_hisobot(update, context)
+        self.assertIn("Farid — 2 000 000", self.sent_text)
+        self.assertIn("Mulakem — 1 000 000", self.sent_text)
+        self.assertIn("Bozorga olib ketilgan summa: 3 000 000", self.sent_text)
+
     def _record_reply(self):
         async def reply_text(text, *args, **kwargs):
             self.sent_text = text

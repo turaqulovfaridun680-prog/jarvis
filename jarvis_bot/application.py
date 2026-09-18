@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import gspread
 from datetime import datetime, timezone, timedelta, time as dt_time
+from difflib import SequenceMatcher
 from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
@@ -1534,15 +1535,25 @@ XOMASHYO_QTY_RE = re.compile(
 XOMASHYO_DATE_PREFIX_RE = re.compile(r"^\d{1,2}[.\s]\d{1,2}(?:[.\s]\d{2,4})?\s+")
 XOMASHYO_BOZORLIK_SOZLAR = ("бозорлик", "bozorlik")
 XOMASHYO_OSTATKA_SOZLAR = ("остатка", "остадка", "ostatka", "қолдиқ", "qoldiq")
+# Haydovchilarga tegishli pul yozuvlari (masalan "Равшан 4 277 000") xomashyo
+# xaridi emas, shuning uchun DRIVERS ro'yxatidagi ismlarning kirillcha
+# ildizlari bilan boshlangan qatorlar alohida "boshqa" toifasiga ajratiladi.
+XOMASHYO_HAYDOVCHI_ILDIZLARI = (
+    "равшан", "баходир", "бахадир", "редван", "асад", "фаррух", "фаррох", "фарид",
+)
 
 
 def xomashyo_kategoriyasi(matn):
-    """Qator xarid (mahsulot), bozorlik (bozorga berilgan pul) yoki ostatka (qaytgan pul)."""
-    past = matn.lower()
+    """Qator xarid (mahsulot), bozorlik (bozorga berilgan pul), ostatka (qaytgan pul)
+    yoki boshqa (haydovchi/shaxsiy to'lov) turlaridan qaysi biriga tegishli."""
+    past = matn.lower().strip()
     if any(soz in past for soz in XOMASHYO_OSTATKA_SOZLAR):
         return "ostatka"
     if any(soz in past for soz in XOMASHYO_BOZORLIK_SOZLAR):
         return "bozorlik"
+    birinchi_soz = past.split(" ", 1)[0] if past else ""
+    if any(birinchi_soz.startswith(ildiz) for ildiz in XOMASHYO_HAYDOVCHI_ILDIZLARI):
+        return "boshqa"
     return "xarid"
 
 
@@ -1619,9 +1630,12 @@ async def xomashyo_savolga_javob(update: Update, context: ContextTypes.DEFAULT_T
         "Bismillahir rohmanir rohim\n\nTo'liq hisobotni administratorga yubordim."
     )
     rows = xomashyo_summary()
-    bozorlik = xomashyo_kategoriya_jami(None, None, "bozorlik")
-    ostatka = xomashyo_kategoriya_jami(None, None, "ostatka")
-    text = format_xomashyo_report(None, None, rows, bozorlik_jami=bozorlik, ostatka_jami=ostatka)
+    bozorlik = xomashyo_kategoriya_kim(None, None, "bozorlik")
+    ostatka = xomashyo_kategoriya_kim(None, None, "ostatka")
+    boshqa = xomashyo_kategoriya_kim(None, None, "boshqa")
+    text = format_xomashyo_report(
+        None, None, rows, bozorlik_rows=bozorlik, ostatka_rows=ostatka, boshqa_rows=boshqa
+    )
     for admin_id in ADMIN_USER_IDS:
         try:
             await context.bot.send_message(chat_id=int(admin_id), text=text)
@@ -1674,8 +1688,12 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
 XOMASHYO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def xomashyo_kategoriya_jami(boshlanish, tugash, kategoriya):
-    query = "SELECT COALESCE(SUM(price), 0) FROM xomashyo_log WHERE category = ?"
+def xomashyo_kategoriya_kim(boshlanish, tugash, kategoriya):
+    """Bozorlik/ostatka summalarini kim yozganiga qarab bo'lib beradi (kim bozorga borgani)."""
+    query = (
+        "SELECT sender_name, COALESCE(SUM(price), 0) AS jami FROM xomashyo_log "
+        "WHERE category = ?"
+    )
     params = [kategoriya]
     if boshlanish:
         query += " AND work_date >= ?"
@@ -1683,8 +1701,54 @@ def xomashyo_kategoriya_jami(boshlanish, tugash, kategoriya):
     if tugash:
         query += " AND work_date <= ?"
         params.append(tugash)
+    query += " GROUP BY sender_name COLLATE NOCASE HAVING jami > 0 ORDER BY jami DESC"
     with delivery_db() as con:
-        return con.execute(query, params).fetchone()[0]
+        return con.execute(query, params).fetchall()
+
+
+def _xomashyo_oxshashmi(a, b):
+    # Kirill matnlarda tez-tez uchraydigan bitta-ikkita harf xatosini
+    # (masalan "Молоко"/"Малоко") qo'lda ro'yxat tuzmasdan avtomatik aniqlash.
+    if min(len(a), len(b)) < 4:
+        return a == b
+    return SequenceMatcher(None, a, b).ratio() >= 0.82
+
+
+def _xomashyo_kanonik_guruhlar(groups):
+    """Yozilishi bir-biriga juda yaqin nomlarni (imlo xatosi) bitta guruhga birlashtiradi."""
+    kalitlar = list(groups.keys())
+    ota = {kalit: kalit for kalit in kalitlar}
+
+    def topish(kalit):
+        while ota[kalit] != kalit:
+            ota[kalit] = ota[ota[kalit]]
+            kalit = ota[kalit]
+        return kalit
+
+    for i, a in enumerate(kalitlar):
+        for b in kalitlar[i + 1:]:
+            if a[1] != b[1]:  # birlik bir xil bo'lishi shart
+                continue
+            if _xomashyo_oxshashmi(a[0], b[0]):
+                ota[topish(a)] = topish(b)
+
+    birlashgan = {}
+    for kalit in kalitlar:
+        bosh = topish(kalit)
+        asosiy = birlashgan.setdefault(bosh, {
+            "item_name": groups[kalit]["item_name"], "unit": groups[kalit]["unit"],
+            "total_qty": None, "total_price": None, "cnt": 0,
+        })
+        g = groups[kalit]
+        # Eng ko'p uchragan yozilishini asosiy nom sifatida ko'rsatamiz.
+        if g["cnt"] > asosiy["cnt"]:
+            asosiy["item_name"] = g["item_name"]
+        asosiy["cnt"] += g["cnt"]
+        if g["total_qty"] is not None:
+            asosiy["total_qty"] = (asosiy["total_qty"] or 0) + g["total_qty"]
+        if g["total_price"] is not None:
+            asosiy["total_price"] = (asosiy["total_price"] or 0) + g["total_price"]
+    return list(birlashgan.values())
 
 
 def xomashyo_summary(boshlanish=None, tugash=None, qidiruv=None):
@@ -1720,13 +1784,33 @@ def xomashyo_summary(boshlanish=None, tugash=None, qidiruv=None):
         if row["price"] is not None:
             group["total_price"] = (group["total_price"] or 0) + row["price"]
 
+    groups = {
+        (g["item_name"].casefold(), g["unit"]): g
+        for g in _xomashyo_kanonik_guruhlar(groups)
+    }
+
     return sorted(
         groups.values(),
         key=lambda g: (g["total_price"] is None, -(g["total_price"] or 0), g["item_name"]),
     )
 
 
-def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None, bozorlik_jami=None, ostatka_jami=None):
+def _xomashyo_kim_qismi(sarlavha, sozlar):
+    jami = sum(row["jami"] for row in sozlar)
+    text = f"\n{sarlavha}: {jami:,} so‘m".replace(",", " ")
+    if len(sozlar) > 1:
+        for row in sozlar:
+            kim = row["sender_name"] or "Noma'lum"
+            text += f"\n   • {kim} — {row['jami']:,} so‘m".replace(",", " ")
+    elif len(sozlar) == 1 and sozlar[0]["sender_name"]:
+        text += f" ({sozlar[0]['sender_name']})"
+    return text
+
+
+def format_xomashyo_report(
+    boshlanish, tugash, rows, qidiruv=None,
+    bozorlik_rows=None, ostatka_rows=None, boshqa_rows=None,
+):
     if boshlanish is None and tugash is None:
         sana_qismi = "barcha vaqt"
     elif boshlanish == tugash:
@@ -1750,10 +1834,12 @@ def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None, bozorlik_jami
         marta = f" ({row['cnt']} marta)" if row["cnt"] > 1 else ""
         text += f"• {row['item_name']}{qty_part}{price_part}{marta}\n"
     text += f"\n💵 Mahsulotlarga sarflangan: {jami:,} so‘m".replace(",", " ")
-    if bozorlik_jami is not None:
-        text += f"\n🛒 Bozorga olib ketilgan summa: {bozorlik_jami:,} so‘m".replace(",", " ")
-    if ostatka_jami is not None:
-        text += f"\n↩️ Ishlatilmay qaytgan (ostatka): {ostatka_jami:,} so‘m".replace(",", " ")
+    if bozorlik_rows is not None:
+        text += _xomashyo_kim_qismi("🛒 Bozorga olib ketilgan summa", bozorlik_rows)
+    if ostatka_rows is not None:
+        text += _xomashyo_kim_qismi("↩️ Ishlatilmay qaytgan (ostatka)", ostatka_rows)
+    if boshqa_rows is not None and boshqa_rows:
+        text += _xomashyo_kim_qismi("🧑‍🤝‍🧑 Boshqa (haydovchi/shaxsiy) to‘lovlar", boshqa_rows)
     return text
 
 
@@ -1765,20 +1851,24 @@ async def xomashyo_hisobot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     qidiruv = " ".join(qidiruv_qismlari) if qidiruv_qismlari else None
 
     rows = xomashyo_summary(boshlanish, tugash, qidiruv)
-    bozorlik = ostatka = None
+    bozorlik = ostatka = boshqa = None
     if not qidiruv:
-        bozorlik = xomashyo_kategoriya_jami(boshlanish, tugash, "bozorlik")
-        ostatka = xomashyo_kategoriya_jami(boshlanish, tugash, "ostatka")
-    text = format_xomashyo_report(boshlanish, tugash, rows, qidiruv, bozorlik, ostatka)
+        bozorlik = xomashyo_kategoriya_kim(boshlanish, tugash, "bozorlik")
+        ostatka = xomashyo_kategoriya_kim(boshlanish, tugash, "ostatka")
+        boshqa = xomashyo_kategoriya_kim(boshlanish, tugash, "boshqa")
+    text = format_xomashyo_report(boshlanish, tugash, rows, qidiruv, bozorlik, ostatka, boshqa)
     await send_long_message(update.message, text)
 
 
 async def kunlik_bozor_yuborish(context: ContextTypes.DEFAULT_TYPE):
     sana = uz_today()
     rows = xomashyo_summary(sana, sana)
-    bozorlik = xomashyo_kategoriya_jami(sana, sana, "bozorlik")
-    ostatka = xomashyo_kategoriya_jami(sana, sana, "ostatka")
-    text = format_xomashyo_report(sana, sana, rows, bozorlik_jami=bozorlik, ostatka_jami=ostatka)
+    bozorlik = xomashyo_kategoriya_kim(sana, sana, "bozorlik")
+    ostatka = xomashyo_kategoriya_kim(sana, sana, "ostatka")
+    boshqa = xomashyo_kategoriya_kim(sana, sana, "boshqa")
+    text = format_xomashyo_report(
+        sana, sana, rows, bozorlik_rows=bozorlik, ostatka_rows=ostatka, boshqa_rows=boshqa
+    )
     for admin_id in ADMIN_USER_IDS:
         try:
             await context.bot.send_message(chat_id=int(admin_id), text=text)
