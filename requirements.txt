@@ -1,4 +1,4 @@
 gspread==6.2.1
 openai==3.3.1
 python-dotenv==1.2.3
-python-telegram-bot==22.8
+python-telegram-bot[job-queue]==22.8

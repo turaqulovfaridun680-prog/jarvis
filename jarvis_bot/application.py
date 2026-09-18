@@ -5,7 +5,7 @@ import re
 import sqlite3
 import tempfile
 import gspread
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time as dt_time
 from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
@@ -1585,29 +1585,84 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"XOMASHYO QAYD ETILDI | {kim} | {len(rows)} qator")
 
 
-async def xomashyo_hisobot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    sana = context.args[0] if context.args else uz_today()
+XOMASHYO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def xomashyo_summary(boshlanish, tugash, qidiruv=None):
+    # Guruhlash va qidiruv Python tomonida amalga oshiriladi, chunki SQLite'ning
+    # NOCASE kollatsiyasi faqat ASCII harflarni farqlaydi, kirill harflarini emas.
     with delivery_db() as con:
         rows = con.execute(
-            "SELECT sender_name, item_name, quantity, unit, price "
-            "FROM xomashyo_log WHERE work_date=? ORDER BY id",
-            (sana,),
+            "SELECT item_name, unit, quantity, price FROM xomashyo_log "
+            "WHERE work_date BETWEEN ? AND ? ORDER BY id",
+            (boshlanish, tugash),
         ).fetchall()
-    if not rows:
-        await update.message.reply_text(f"📦 {sana} uchun xomashyo yozuvi topilmadi.")
-        return
 
-    text = f"📦 XOMASHYO HISOBOTI — {sana}\n\n"
+    qidiruv_cf = qidiruv.casefold() if qidiruv else None
+    groups = {}
+    for row in rows:
+        if qidiruv_cf and qidiruv_cf not in row["item_name"].casefold():
+            continue
+        key = (row["item_name"].casefold(), row["unit"])
+        group = groups.setdefault(key, {
+            "item_name": row["item_name"], "unit": row["unit"],
+            "total_qty": None, "total_price": None, "cnt": 0,
+        })
+        group["cnt"] += 1
+        if row["quantity"] is not None:
+            group["total_qty"] = (group["total_qty"] or 0) + row["quantity"]
+        if row["price"] is not None:
+            group["total_price"] = (group["total_price"] or 0) + row["price"]
+
+    return sorted(
+        groups.values(),
+        key=lambda g: (g["total_price"] is None, -(g["total_price"] or 0), g["item_name"]),
+    )
+
+
+def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None):
+    sana_qismi = boshlanish if boshlanish == tugash else f"{boshlanish} — {tugash}"
+    sarlavha = f"📦 XOMASHYO HISOBOTI — {sana_qismi}"
+    if qidiruv:
+        sarlavha += f" (qidiruv: {qidiruv})"
+    if not rows:
+        return sarlavha + "\n\nYozuv topilmadi."
+
+    text = sarlavha + "\n\n"
     jami = 0
     for row in rows:
-        qty_part = f" {fmt_qty(row['quantity'])} {row['unit']}" if row["quantity"] else ""
+        qty_part = f" — jami {fmt_qty(row['total_qty'])} {row['unit']}" if row["total_qty"] else ""
         price_part = ""
-        if row["price"]:
-            jami += row["price"]
-            price_part = f" — {row['price']:,} so‘m".replace(",", " ")
-        text += f"• {row['item_name']}{qty_part}{price_part}\n"
+        if row["total_price"]:
+            jami += row["total_price"]
+            price_part = f" — {row['total_price']:,} so‘m".replace(",", " ")
+        marta = f" ({row['cnt']} marta)" if row["cnt"] > 1 else ""
+        text += f"• {row['item_name']}{qty_part}{price_part}{marta}\n"
     text += f"\n💵 Jami xarajat: {jami:,} so‘m".replace(",", " ")
+    return text
+
+
+async def xomashyo_hisobot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sanalar = [arg for arg in context.args if XOMASHYO_DATE_RE.match(arg)]
+    qidiruv_qismlari = [arg for arg in context.args if not XOMASHYO_DATE_RE.match(arg)]
+    boshlanish = sanalar[0] if sanalar else uz_today()
+    tugash = sanalar[1] if len(sanalar) > 1 else boshlanish
+    qidiruv = " ".join(qidiruv_qismlari) if qidiruv_qismlari else None
+
+    rows = xomashyo_summary(boshlanish, tugash, qidiruv)
+    text = format_xomashyo_report(boshlanish, tugash, rows, qidiruv)
     await send_long_message(update.message, text)
+
+
+async def kunlik_bozor_yuborish(context: ContextTypes.DEFAULT_TYPE):
+    sana = uz_today()
+    rows = xomashyo_summary(sana, sana)
+    text = format_xomashyo_report(sana, sana, rows)
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            await context.bot.send_message(chat_id=int(admin_id), text=text)
+        except Exception as e:
+            print(f"KUNLIK BOZOR YUBORISH XATOSI | {admin_id} | {e}")
 
 
 async def matn_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1916,6 +1971,12 @@ def build_application():
     app.add_handler(
         CommandHandler("xomashyo_hisobot", admin_only(xomashyo_hisobot))
     )
+    if BOZOR_GROUP_CHAT_ID and ADMIN_USER_IDS and app.job_queue:
+        app.job_queue.run_daily(
+            kunlik_bozor_yuborish,
+            time=dt_time(hour=18, minute=0, tzinfo=timezone(timedelta(hours=5))),
+            name="kunlik_bozor_yuborish",
+        )
     return app
 
 

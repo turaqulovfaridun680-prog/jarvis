@@ -104,10 +104,70 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("360 000", self.sent_text)
         self.assertIn("Jami xarajat: 360 000", self.sent_text)
 
+    async def test_report_aggregates_same_item_across_date_range(self):
+        await app.bozor_guruh(
+            self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace()
+        )
+        later = self.make_update("Творог агро 2 кг 40 000")
+        later.message.date = datetime(2026, 9, 3, 8, 0, tzinfo=timezone.utc)
+        await app.bozor_guruh(later, SimpleNamespace())
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-01", "2026-09-05"])
+        await app.xomashyo_hisobot(update, context)
+        self.assertIn("2026-09-01 — 2026-09-05", self.sent_text)
+        self.assertIn("jami 20 кг", self.sent_text)
+        self.assertIn("400 000", self.sent_text)
+        self.assertIn("2 marta", self.sent_text)
+
+    async def test_report_filters_by_search_term(self):
+        await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
+        await app.bozor_guruh(self.make_update("Тухум"), SimpleNamespace())
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-02", "тухум"])
+        await app.xomashyo_hisobot(update, context)
+        self.assertIn("Тухум", self.sent_text)
+        self.assertNotIn("Творог", self.sent_text)
+
     def _record_reply(self):
         async def reply_text(text, *args, **kwargs):
             self.sent_text = text
         return reply_text
+
+
+class KunlikBozorYuborishTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        base = patch.object(app, "BASE_DIR", Path(self.directory.name))
+        base.start()
+        self.addCleanup(base.stop)
+        admins = patch.object(app, "ADMIN_USER_IDS", frozenset({"111", "222"}))
+        admins.start()
+        self.addCleanup(admins.stop)
+        app.init_delivery_db()
+
+        today = app.uz_today()
+        with app.delivery_db() as con:
+            con.execute(
+                "INSERT INTO xomashyo_log(telegram_chat_id, sender_name, raw_text, "
+                "item_name, quantity, unit, price, work_date) "
+                "VALUES ('-1', 'Mulakem', 'Тухум 20 000', 'Тухум', NULL, NULL, 20000, ?)",
+                (today,),
+            )
+
+    async def test_sends_todays_summary_to_every_admin(self):
+        sent = []
+
+        async def send_message(chat_id, text):
+            sent.append((chat_id, text))
+
+        context = SimpleNamespace(bot=SimpleNamespace(send_message=send_message))
+        await app.kunlik_bozor_yuborish(context)
+        self.assertEqual({c for c, _ in sent}, {111, 222})
+        self.assertIn("Тухум", sent[0][1])
+        self.assertIn("20 000", sent[0][1])
 
 
 if __name__ == "__main__":
