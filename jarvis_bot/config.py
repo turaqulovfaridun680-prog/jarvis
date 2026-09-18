@@ -18,6 +18,7 @@ class Settings:
     zilola_chat_id: str = os.getenv("ZILOLA_CHAT_ID", "")
     delivery_report_chat_id: str = os.getenv("DASTAVKA_REPORT_CHAT_ID", "")
     debt_group_chat_id: str = os.getenv("DEBT_GROUP_CHAT_ID", "")
+    bozor_group_chat_id: str = os.getenv("BOZOR_GROUP_CHAT_ID", "")
     driver_registration_secret: str = os.getenv("DRIVER_REGISTRATION_SECRET", "")
     admin_user_ids: frozenset[str] = frozenset(
         value.strip()
@@ -41,6 +42,7 @@ class Settings:
             raise RuntimeError("Majburiy sozlama topilmadi: " + ", ".join(missing))
         for name, value in (
             ("DEBT_GROUP_CHAT_ID", self.debt_group_chat_id),
+            ("BOZOR_GROUP_CHAT_ID", self.bozor_group_chat_id),
             ("ZILOLA_CHAT_ID", self.zilola_chat_id),
             ("DASTAVKA_REPORT_CHAT_ID", self.delivery_report_chat_id),
         ):

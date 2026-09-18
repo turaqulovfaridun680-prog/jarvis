@@ -50,6 +50,7 @@ TELEGRAM_BOT_TOKEN = settings.telegram_bot_token
 ZILOLA_CHAT_ID = settings.zilola_chat_id
 DASTAVKA_REPORT_CHAT_ID = settings.delivery_report_chat_id
 DEBT_GROUP_CHAT_ID = settings.debt_group_chat_id
+BOZOR_GROUP_CHAT_ID = settings.bozor_group_chat_id
 DRIVER_REGISTRATION_SECRET = settings.driver_registration_secret
 ADMIN_USER_IDS = settings.admin_user_ids
 GOOGLE_CREDENTIALS_FILE = settings.google_credentials_file
@@ -85,12 +86,13 @@ UNITS = {
 
 TAMINOTCHI_YORDAM_KEY = "yordam_taminochi"
 DEFAULT_TAMINOTCHI_YORDAM = (
-    "📋 Ta'minotchi uchun namuna:\n\n"
-    "Mahsulot nomi - miqdori - birligi\n\n"
+    "📋 Ta'minotchi uchun namuna (Bozor guruhida yozing):\n\n"
+    "Xomashyo nomi, miqdori va narxi bilan yozing.\n\n"
     "Masalan:\n"
-    "SAMSACHA - 50 - dona\n"
-    "KEKS - 3 - karobka\n\n"
-    "Har bir mahsulotni alohida qatorda yozing."
+    "Творог агро 18 кг 360 000\n"
+    "Масло агро 1 кг 100 000\n"
+    "Бозор 130 000\n\n"
+    "Har bir xomashyoni alohida qatorda yozing — bot avtomatik qayd qilib boradi."
 )
 
 (
@@ -165,6 +167,21 @@ def init_delivery_db():
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS xomashyo_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_chat_id TEXT NOT NULL,
+                message_id INTEGER,
+                sender_name TEXT,
+                raw_text TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                quantity REAL,
+                unit TEXT,
+                price INTEGER,
+                work_date TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_xomashyo_log_date
+                ON xomashyo_log(work_date);
         """)
         con.executemany(
             "INSERT OR IGNORE INTO delivery_drivers(name) VALUES (?)",
@@ -1500,6 +1517,99 @@ async def qarz_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print("QOLDIQNI TENGLASH XATOSI:", e)
 
 
+XOMASHYO_MONEY_RE = re.compile(r"(?<!\d)(?:\d{1,3}(?:[\s., ]\d{3})+|\d{4,})(?!\d)")
+XOMASHYO_QTY_RE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*"
+    r"(кг|kg|та|dona|шт|litr|л|qop|қоп|karobka|коробка|konteyner|kanister)\b",
+    re.IGNORECASE,
+)
+
+
+def parse_xomashyo_line(line):
+    """Erkin matn qatoridan xomashyo nomi, miqdori va narxini ajratib olishga harakat qiladi."""
+    line = line.strip()
+    if not line:
+        return None
+
+    price = None
+    text = line
+    money_matches = list(XOMASHYO_MONEY_RE.finditer(line))
+    if money_matches:
+        last = money_matches[-1]
+        price = int(re.sub(r"\D", "", last.group()))
+        text = (line[:last.start()] + line[last.end():]).strip()
+
+    quantity = unit = None
+    qty_match = XOMASHYO_QTY_RE.search(text)
+    if qty_match:
+        remaining = (text[:qty_match.start()] + text[qty_match.end():]).strip(" -–:")
+        if remaining:
+            quantity = float(qty_match.group(1).replace(",", "."))
+            unit = qty_match.group(2).lower()
+            text = remaining
+
+    item_name = text.strip(" -–:") or line
+    return {"item_name": item_name, "quantity": quantity, "unit": unit, "price": price}
+
+
+async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+    chat = update.effective_chat
+    if not BOZOR_GROUP_CHAT_ID or str(chat.id) != str(BOZOR_GROUP_CHAT_ID):
+        return
+
+    kim = update.effective_user.first_name or "Noma'lum"
+    work_date = update.message.date.astimezone(timezone(timedelta(hours=5))).strftime("%Y-%m-%d")
+
+    rows = []
+    for line in update.message.text.splitlines():
+        parsed = parse_xomashyo_line(line)
+        if not parsed:
+            continue
+        rows.append((
+            str(chat.id), update.message.message_id, kim, line,
+            parsed["item_name"], parsed["quantity"], parsed["unit"], parsed["price"],
+            work_date,
+        ))
+    if not rows:
+        return
+
+    with delivery_db() as con:
+        con.executemany("""
+            INSERT INTO xomashyo_log(
+                telegram_chat_id, message_id, sender_name, raw_text,
+                item_name, quantity, unit, price, work_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
+    print(f"XOMASHYO QAYD ETILDI | {kim} | {len(rows)} qator")
+
+
+async def xomashyo_hisobot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sana = context.args[0] if context.args else uz_today()
+    with delivery_db() as con:
+        rows = con.execute(
+            "SELECT sender_name, item_name, quantity, unit, price "
+            "FROM xomashyo_log WHERE work_date=? ORDER BY id",
+            (sana,),
+        ).fetchall()
+    if not rows:
+        await update.message.reply_text(f"📦 {sana} uchun xomashyo yozuvi topilmadi.")
+        return
+
+    text = f"📦 XOMASHYO HISOBOTI — {sana}\n\n"
+    jami = 0
+    for row in rows:
+        qty_part = f" {fmt_qty(row['quantity'])} {row['unit']}" if row["quantity"] else ""
+        price_part = ""
+        if row["price"]:
+            jami += row["price"]
+            price_part = f" — {row['price']:,} so‘m".replace(",", " ")
+        text += f"• {row['item_name']}{qty_part}{price_part}\n"
+    text += f"\n💵 Jami xarajat: {jami:,} so‘m".replace(",", " ")
+    await send_long_message(update.message, text)
+
+
 async def matn_javob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     message = update.effective_message
@@ -1770,6 +1880,13 @@ def build_application():
                 admin_only(qarz_guruh),
             )
         )
+    if BOZOR_GROUP_CHAT_ID:
+        app.add_handler(
+            MessageHandler(
+                filters.Chat(chat_id=int(BOZOR_GROUP_CHAT_ID)) & filters.TEXT & ~filters.COMMAND,
+                bozor_guruh,
+            )
+        )
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -1795,6 +1912,9 @@ def build_application():
     )
     app.add_handler(
         CommandHandler("qarz", admin_only(qarz))
+    )
+    app.add_handler(
+        CommandHandler("xomashyo_hisobot", admin_only(xomashyo_hisobot))
     )
     return app
 
