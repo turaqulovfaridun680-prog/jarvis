@@ -83,6 +83,16 @@ UNITS = {
     "konteyner": "🧺 Konteyner",
 }
 
+TAMINOTCHI_YORDAM_KEY = "yordam_taminochi"
+DEFAULT_TAMINOTCHI_YORDAM = (
+    "📋 Ta'minotchi uchun namuna:\n\n"
+    "Mahsulot nomi - miqdori - birligi\n\n"
+    "Masalan:\n"
+    "SAMSACHA - 50 - dona\n"
+    "KEKS - 3 - karobka\n\n"
+    "Har bir mahsulotni alohida qatorda yozing."
+)
+
 (
     Y_DRIVER, Y_BIG_TRAYS, Y_PRODUCT_SEARCH, Y_NEW_PRODUCT,
     Y_UNIT, Y_QTY, Q_DELIVERY, Q_ITEM, Q_EMPTY_TRAYS,
@@ -151,6 +161,10 @@ def init_delivery_db():
                 ON deliveries(work_date, status);
             CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery
                 ON delivery_items(delivery_id);
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
         """)
         con.executemany(
             "INSERT OR IGNORE INTO delivery_drivers(name) VALUES (?)",
@@ -159,6 +173,21 @@ def init_delivery_db():
         con.executemany(
             "INSERT OR IGNORE INTO delivery_products(name) VALUES (?)",
             [(name,) for name in PRODUCTS],
+        )
+
+
+def get_setting(key, default=""):
+    with delivery_db() as con:
+        row = con.execute("SELECT value FROM bot_settings WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    with delivery_db() as con:
+        con.execute(
+            "INSERT INTO bot_settings(key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
         )
 
 
@@ -234,7 +263,8 @@ def admin_only(handler):
                 "🚚 Sizga faqat dastavka bo‘limi ochiq.\n\n"
                 "/yuklash — ertalabki yuk\n"
                 "/qoldiq — kun oxiri qoldig‘i\n"
-                "/mening_hisobot — o‘z hisobotingiz"
+                "/mening_hisobot — o‘z hisobotingiz\n"
+                "/yordam — ta'minotchi uchun namuna"
             )
             return
         await update.effective_message.reply_text("⛔ Bu bo‘lim faqat administrator uchun.")
@@ -1186,6 +1216,22 @@ def tarix_matni(chat_id):
     return "\n".join(qatorlar)
 
 
+async def yordam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(get_setting(TAMINOTCHI_YORDAM_KEY, DEFAULT_TAMINOTCHI_YORDAM))
+
+
+async def yordam_belgila(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text.partition(" ")[2].strip()
+    if not matn:
+        await update.message.reply_text(
+            "✍️ Yangi shpargalka matnini shu buyruqdan keyin yozing.\n\n"
+            "Hozirgi matn:\n\n" + get_setting(TAMINOTCHI_YORDAM_KEY, DEFAULT_TAMINOTCHI_YORDAM)
+        )
+        return
+    set_setting(TAMINOTCHI_YORDAM_KEY, matn)
+    await update.message.reply_text("✅ /yordam matni yangilandi:\n\n" + matn)
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     ism = update.effective_user.first_name or "foydalanuvchi"
@@ -1209,7 +1255,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Sizga faqat dastavka bo‘limi ochiq:\n"
             "/yuklash — ertalabki yuk\n"
             "/qoldiq — kun oxiri qoldig‘i\n"
-            "/mening_hisobot — o‘z hisobotingiz"
+            "/mening_hisobot — o‘z hisobotingiz\n"
+            "/yordam — ta'minotchi uchun namuna"
         )
         return
 
@@ -1700,6 +1747,8 @@ def build_application():
     app.add_handler(CallbackQueryHandler(register_driver_choice, pattern=r"^regd:\d+$"))
     app.add_handler(CommandHandler("dastavchik_link", admin_only(dastavchik_link)))
     app.add_handler(CommandHandler("chatid", chat_id))
+    app.add_handler(CommandHandler("yordam", yordam))
+    app.add_handler(CommandHandler("yordam_belgila", admin_only(yordam_belgila)))
 
     # Dastavchik suhbatlari umumiy matn handleridan oldin turishi shart.
     yuklash_handler, qoldiq_handler = delivery_handlers()

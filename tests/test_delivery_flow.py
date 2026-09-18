@@ -112,3 +112,37 @@ class DeliveryFlowTests(unittest.IsolatedAsyncioTestCase):
             isinstance(handler, app.CommandHandler) and "tayyor" in handler.commands
             for handler in loading.states[app.Y_PRODUCT_SEARCH]
         ))
+
+
+class YordamCheatSheetTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        base = patch.object(app, "BASE_DIR", Path(self.directory.name))
+        base.start()
+        self.addCleanup(base.stop)
+        app.init_delivery_db()
+        self.message = SimpleNamespace(text="", reply_text=AsyncMock())
+        self.update = SimpleNamespace(message=self.message)
+        self.context = SimpleNamespace(user_data={})
+
+    async def test_yordam_shows_default_text_when_unset(self):
+        await app.yordam(self.update, self.context)
+        self.assertEqual(
+            self.message.reply_text.call_args.args[0], app.DEFAULT_TAMINOTCHI_YORDAM
+        )
+
+    async def test_yordam_belgila_updates_text_for_everyone(self):
+        self.message.text = "/yordam_belgila SAMSACHA - 50 - dona"
+        await app.yordam_belgila(self.update, self.context)
+        self.assertIn("SAMSACHA - 50 - dona", self.message.reply_text.call_args.args[0])
+
+        self.message.reply_text.reset_mock()
+        await app.yordam(self.update, self.context)
+        self.assertEqual(self.message.reply_text.call_args.args[0], "SAMSACHA - 50 - dona")
+
+    async def test_yordam_belgila_without_text_shows_current_value(self):
+        self.message.text = "/yordam_belgila"
+        await app.yordam_belgila(self.update, self.context)
+        self.assertIn(app.DEFAULT_TAMINOTCHI_YORDAM, self.message.reply_text.call_args.args[0])
+        self.assertEqual(app.get_setting(app.TAMINOTCHI_YORDAM_KEY), "")
