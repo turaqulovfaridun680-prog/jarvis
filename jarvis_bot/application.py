@@ -183,6 +183,12 @@ def init_delivery_db():
             CREATE INDEX IF NOT EXISTS idx_xomashyo_log_date
                 ON xomashyo_log(work_date);
         """)
+        # Eski bazalarni ma'lumot yo'qotmasdan yangi sxemaga o'tkazish.
+        xomashyo_columns = {row[1] for row in con.execute("PRAGMA table_info(xomashyo_log)")}
+        if "category" not in xomashyo_columns:
+            con.execute(
+                "ALTER TABLE xomashyo_log ADD COLUMN category TEXT NOT NULL DEFAULT 'xarid'"
+            )
         con.executemany(
             "INSERT OR IGNORE INTO delivery_drivers(name) VALUES (?)",
             [(name,) for name in DRIVERS],
@@ -1523,21 +1529,42 @@ XOMASHYO_QTY_RE = re.compile(
     r"(кг|kg|та|dona|шт|litr|л|qop|қоп|karobka|коробка|konteyner|kanister)\b",
     re.IGNORECASE,
 )
+# "16 09 2026 бозорлик" kabi sana bilan boshlangan qatorlarda sananing bir
+# qismi (masalan yil) narx sifatida noto'g'ri o'qilib qolmasligi uchun.
+XOMASHYO_DATE_PREFIX_RE = re.compile(r"^\d{1,2}[.\s]\d{1,2}(?:[.\s]\d{2,4})?\s+")
+XOMASHYO_BOZORLIK_SOZLAR = ("бозорлик", "bozorlik")
+XOMASHYO_OSTATKA_SOZLAR = ("остатка", "остадка", "ostatka", "қолдиқ", "qoldiq")
+
+
+def xomashyo_kategoriyasi(matn):
+    """Qator xarid (mahsulot), bozorlik (bozorga berilgan pul) yoki ostatka (qaytgan pul)."""
+    past = matn.lower()
+    if any(soz in past for soz in XOMASHYO_OSTATKA_SOZLAR):
+        return "ostatka"
+    if any(soz in past for soz in XOMASHYO_BOZORLIK_SOZLAR):
+        return "bozorlik"
+    return "xarid"
 
 
 def parse_xomashyo_line(line):
-    """Erkin matn qatoridan xomashyo nomi, miqdori va narxini ajratib olishga harakat qiladi."""
+    """Erkin matn qatoridan xomashyo nomi, miqdori, narxi va turini ajratib olishga harakat qiladi."""
     line = line.strip()
     if not line:
         return None
 
-    price = None
+    kategoriya = xomashyo_kategoriyasi(line)
     text = line
-    money_matches = list(XOMASHYO_MONEY_RE.finditer(line))
+    if kategoriya != "xarid":
+        sanasiz = XOMASHYO_DATE_PREFIX_RE.sub("", line, count=1).strip()
+        if sanasiz:
+            text = sanasiz
+
+    price = None
+    money_matches = list(XOMASHYO_MONEY_RE.finditer(text))
     if money_matches:
         last = money_matches[-1]
         price = int(re.sub(r"\D", "", last.group()))
-        text = (line[:last.start()] + line[last.end():]).strip()
+        text = (text[:last.start()] + text[last.end():]).strip()
 
     quantity = unit = None
     qty_match = XOMASHYO_QTY_RE.search(text)
@@ -1549,7 +1576,10 @@ def parse_xomashyo_line(line):
             text = remaining
 
     item_name = text.strip(" -–:") or line
-    return {"item_name": item_name, "quantity": quantity, "unit": unit, "price": price}
+    return {
+        "item_name": item_name, "quantity": quantity, "unit": unit,
+        "price": price, "category": kategoriya,
+    }
 
 
 XOMASHYO_SAVOL_SOZLAR = (
@@ -1566,19 +1596,37 @@ def xomashyo_savolmi(line):
     return "?" in past or any(soz in past for soz in XOMASHYO_SAVOL_SOZLAR)
 
 
-async def xomashyo_savolga_javob(update: Update, savol):
+async def xomashyo_savolga_javob(update: Update, context: ContextTypes.DEFAULT_TYPE, savol):
     with delivery_db() as con:
         nomlar = [
             row["item_name"] for row in
-            con.execute("SELECT DISTINCT item_name FROM xomashyo_log").fetchall()
+            con.execute("SELECT DISTINCT item_name FROM xomashyo_log WHERE category='xarid'").fetchall()
         ]
     savol_cf = savol.casefold()
     nomzodlar = [nom for nom in nomlar if len(nom) >= 3 and nom.casefold() in savol_cf]
     mos_nom = max(nomzodlar, key=len) if nomzodlar else None
 
-    rows = xomashyo_summary(qidiruv=mos_nom)
-    text = format_xomashyo_report(None, None, rows, mos_nom)
-    await update.message.reply_text(text)
+    if mos_nom:
+        # Guruhda faqat so'ralgan mahsulot haqida qisqa javob beramiz.
+        rows = xomashyo_summary(qidiruv=mos_nom)
+        text = format_xomashyo_report(None, None, rows, mos_nom)
+        await update.message.reply_text(text)
+        return
+
+    # Mahsulot aniq bo'lmasa, to'liq moliyaviy hisobot guruhga emas,
+    # faqat adminlarga shaxsiy yuboriladi.
+    await update.message.reply_text(
+        "Bismillahir rohmanir rohim\n\nTo'liq hisobotni administratorga yubordim."
+    )
+    rows = xomashyo_summary()
+    bozorlik = xomashyo_kategoriya_jami(None, None, "bozorlik")
+    ostatka = xomashyo_kategoriya_jami(None, None, "ostatka")
+    text = format_xomashyo_report(None, None, rows, bozorlik_jami=bozorlik, ostatka_jami=ostatka)
+    for admin_id in ADMIN_USER_IDS:
+        try:
+            await context.bot.send_message(chat_id=int(admin_id), text=text)
+        except Exception as e:
+            print(f"SAVOLGA JAVOB YUBORISH XATOSI | {admin_id} | {e}")
 
 
 async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1606,7 +1654,7 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rows.append((
             str(chat.id), update.message.message_id, kim, line,
             parsed["item_name"], parsed["quantity"], parsed["unit"], parsed["price"],
-            work_date,
+            work_date, parsed["category"],
         ))
 
     if rows:
@@ -1614,22 +1662,37 @@ async def bozor_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             con.executemany("""
                 INSERT INTO xomashyo_log(
                     telegram_chat_id, message_id, sender_name, raw_text,
-                    item_name, quantity, unit, price, work_date
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    item_name, quantity, unit, price, work_date, category
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, rows)
         print(f"XOMASHYO QAYD ETILDI | {kim} | {len(rows)} qator")
 
     if savol_qatori:
-        await xomashyo_savolga_javob(update, savol_qatori)
+        await xomashyo_savolga_javob(update, context, savol_qatori)
 
 
 XOMASHYO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def xomashyo_kategoriya_jami(boshlanish, tugash, kategoriya):
+    query = "SELECT COALESCE(SUM(price), 0) FROM xomashyo_log WHERE category = ?"
+    params = [kategoriya]
+    if boshlanish:
+        query += " AND work_date >= ?"
+        params.append(boshlanish)
+    if tugash:
+        query += " AND work_date <= ?"
+        params.append(tugash)
+    with delivery_db() as con:
+        return con.execute(query, params).fetchone()[0]
+
+
 def xomashyo_summary(boshlanish=None, tugash=None, qidiruv=None):
     # Guruhlash va qidiruv Python tomonida amalga oshiriladi, chunki SQLite'ning
     # NOCASE kollatsiyasi faqat ASCII harflarni farqlaydi, kirill harflarini emas.
-    query = "SELECT item_name, unit, quantity, price FROM xomashyo_log WHERE 1=1"
+    # "bozorlik" (bozorga berilgan pul) va "ostatka" (qaytgan pul) alohida
+    # hisoblanadi, shuning uchun bu yerda faqat haqiqiy xaridlar olinadi.
+    query = "SELECT item_name, unit, quantity, price FROM xomashyo_log WHERE category='xarid'"
     params = []
     if boshlanish:
         query += " AND work_date >= ?"
@@ -1663,7 +1726,7 @@ def xomashyo_summary(boshlanish=None, tugash=None, qidiruv=None):
     )
 
 
-def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None):
+def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None, bozorlik_jami=None, ostatka_jami=None):
     if boshlanish is None and tugash is None:
         sana_qismi = "barcha vaqt"
     elif boshlanish == tugash:
@@ -1673,11 +1736,11 @@ def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None):
     sarlavha = f"Bismillahir rohmanir rohim\n\n📦 XOMASHYO HISOBOTI — {sana_qismi}"
     if qidiruv:
         sarlavha += f" (qidiruv: {qidiruv})"
-    if not rows:
-        return sarlavha + "\n\nYozuv topilmadi."
 
     text = sarlavha + "\n\n"
     jami = 0
+    if not rows:
+        text += "Mahsulot yozuvi topilmadi.\n"
     for row in rows:
         qty_part = f" — jami {fmt_qty(row['total_qty'])} {row['unit']}" if row["total_qty"] else ""
         price_part = ""
@@ -1686,7 +1749,11 @@ def format_xomashyo_report(boshlanish, tugash, rows, qidiruv=None):
             price_part = f" — {row['total_price']:,} so‘m".replace(",", " ")
         marta = f" ({row['cnt']} marta)" if row["cnt"] > 1 else ""
         text += f"• {row['item_name']}{qty_part}{price_part}{marta}\n"
-    text += f"\n💵 Jami xarajat: {jami:,} so‘m".replace(",", " ")
+    text += f"\n💵 Mahsulotlarga sarflangan: {jami:,} so‘m".replace(",", " ")
+    if bozorlik_jami is not None:
+        text += f"\n🛒 Bozorga olib ketilgan summa: {bozorlik_jami:,} so‘m".replace(",", " ")
+    if ostatka_jami is not None:
+        text += f"\n↩️ Ishlatilmay qaytgan (ostatka): {ostatka_jami:,} so‘m".replace(",", " ")
     return text
 
 
@@ -1698,14 +1765,20 @@ async def xomashyo_hisobot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     qidiruv = " ".join(qidiruv_qismlari) if qidiruv_qismlari else None
 
     rows = xomashyo_summary(boshlanish, tugash, qidiruv)
-    text = format_xomashyo_report(boshlanish, tugash, rows, qidiruv)
+    bozorlik = ostatka = None
+    if not qidiruv:
+        bozorlik = xomashyo_kategoriya_jami(boshlanish, tugash, "bozorlik")
+        ostatka = xomashyo_kategoriya_jami(boshlanish, tugash, "ostatka")
+    text = format_xomashyo_report(boshlanish, tugash, rows, qidiruv, bozorlik, ostatka)
     await send_long_message(update.message, text)
 
 
 async def kunlik_bozor_yuborish(context: ContextTypes.DEFAULT_TYPE):
     sana = uz_today()
     rows = xomashyo_summary(sana, sana)
-    text = format_xomashyo_report(sana, sana, rows)
+    bozorlik = xomashyo_kategoriya_jami(sana, sana, "bozorlik")
+    ostatka = xomashyo_kategoriya_jami(sana, sana, "ostatka")
+    text = format_xomashyo_report(sana, sana, rows, bozorlik_jami=bozorlik, ostatka_jami=ostatka)
     for admin_id in ADMIN_USER_IDS:
         try:
             await context.bot.send_message(chat_id=int(admin_id), text=text)

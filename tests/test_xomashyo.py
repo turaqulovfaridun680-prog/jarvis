@@ -13,19 +13,38 @@ class ParseXomashyoLineTests(unittest.TestCase):
         result = app.parse_xomashyo_line("Творог агро 18 кг 360 000")
         self.assertEqual(result, {
             "item_name": "Творог агро", "quantity": 18.0, "unit": "кг", "price": 360000,
+            "category": "xarid",
         })
 
     def test_price_only_no_quantity(self):
         result = app.parse_xomashyo_line("Бозор 130 000")
         self.assertEqual(result, {
             "item_name": "Бозор", "quantity": None, "unit": None, "price": 130000,
+            "category": "xarid",
         })
 
     def test_name_only_request_without_price(self):
         result = app.parse_xomashyo_line("Тухум")
         self.assertEqual(result, {
             "item_name": "Тухум", "quantity": None, "unit": None, "price": None,
+            "category": "xarid",
         })
+
+    def test_bozorlik_cash_out_with_date_prefix_has_no_phantom_price(self):
+        result = app.parse_xomashyo_line("16 09 2026 бозорлик")
+        self.assertEqual(result["category"], "bozorlik")
+        self.assertIsNone(result["price"])
+
+    def test_bozorlik_cash_out_with_real_amount(self):
+        result = app.parse_xomashyo_line("17 09 2026 бозорлик 2 800 000")
+        self.assertEqual(result["category"], "bozorlik")
+        self.assertEqual(result["price"], 2800000)
+        self.assertEqual(result["item_name"], "бозорлик")
+
+    def test_ostatka_returned_cash_is_categorized(self):
+        result = app.parse_xomashyo_line("Остадка 1 800 000 цехба мондам")
+        self.assertEqual(result["category"], "ostatka")
+        self.assertEqual(result["price"], 1800000)
 
     def test_thousand_grouped_price_without_unit(self):
         result = app.parse_xomashyo_line("Тухумчиба 1 040 000")
@@ -103,7 +122,7 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Творог агро", self.sent_text)
         self.assertIn("Тухум", self.sent_text)
         self.assertIn("360 000", self.sent_text)
-        self.assertIn("Jami xarajat: 360 000", self.sent_text)
+        self.assertIn("Mahsulotlarga sarflangan: 360 000", self.sent_text)
 
     async def test_report_aggregates_same_item_across_date_range(self):
         await app.bozor_guruh(
@@ -121,10 +140,10 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("400 000", self.sent_text)
         self.assertIn("2 marta", self.sent_text)
 
-    async def test_question_line_is_not_logged_but_gets_a_reply(self):
+    async def test_specific_item_question_gets_a_short_group_reply(self):
         await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
 
-        update = self.make_update("nechi xil xomashyo bor bu yerda")
+        update = self.make_update("Творог агро qancha keldi?")
         await app.bozor_guruh(update, SimpleNamespace())
 
         with app.delivery_db() as con:
@@ -136,8 +155,38 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Bismillahir rohmanir rohim", reply)
         self.assertIn("Творог агро", reply)
 
-    async def test_mixed_message_logs_entry_and_answers_question(self):
-        text = "Творог агро 18 кг 360 000\nnecha xil xomashyo keldi?"
+    async def test_generic_question_gets_short_group_reply_and_admin_dm(self):
+        admins = patch.object(app, "ADMIN_USER_IDS", frozenset({"111"}))
+        admins.start()
+        self.addCleanup(admins.stop)
+
+        await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
+
+        update = self.make_update("nechi xil xomashyo bor bu yerda")
+        sent = []
+
+        async def send_message(chat_id, text):
+            sent.append((chat_id, text))
+
+        context = SimpleNamespace(bot=SimpleNamespace(send_message=send_message))
+        await app.bozor_guruh(update, context)
+
+        with app.delivery_db() as con:
+            rows = con.execute("SELECT item_name FROM xomashyo_log").fetchall()
+        self.assertEqual([r["item_name"] for r in rows], ["Творог агро"])
+
+        update.message.reply_text.assert_awaited_once()
+        group_reply = update.message.reply_text.call_args.args[0]
+        self.assertIn("administratorga yubordim", group_reply)
+        self.assertNotIn("Творог агро", group_reply)
+
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0][0], 111)
+        self.assertIn("Творог агро", sent[0][1])
+        self.assertIn("Bismillahir rohmanir rohim", sent[0][1])
+
+    async def test_mixed_message_logs_entry_and_answers_specific_question(self):
+        text = "Творог агро 18 кг 360 000\nТворог агро qancha keldi?"
         update = self.make_update(text)
         await app.bozor_guruh(update, SimpleNamespace())
 
@@ -155,6 +204,22 @@ class BozorGuruhHandlerTests(unittest.IsolatedAsyncioTestCase):
         await app.xomashyo_hisobot(update, context)
         self.assertIn("Тухум", self.sent_text)
         self.assertNotIn("Творог", self.sent_text)
+
+    async def test_bozorlik_and_ostatka_excluded_from_item_list_and_shown_separately(self):
+        await app.bozor_guruh(self.make_update("Творог агро 18 кг 360 000"), SimpleNamespace())
+        await app.bozor_guruh(self.make_update("17 09 2026 бозорлик 2 800 000"), SimpleNamespace())
+        await app.bozor_guruh(self.make_update("Остадка 1 800 000 цехба мондам"), SimpleNamespace())
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=self._record_reply()))
+        context = SimpleNamespace(args=["2026-09-02"])
+        await app.xomashyo_hisobot(update, context)
+
+        self.assertIn("Творог агро", self.sent_text)
+        self.assertNotIn("бозорлик", self.sent_text.lower())
+        self.assertNotIn("остадка", self.sent_text.lower())
+        self.assertIn("Mahsulotlarga sarflangan: 360 000", self.sent_text)
+        self.assertIn("Bozorga olib ketilgan summa: 2 800 000", self.sent_text)
+        self.assertIn("Ishlatilmay qaytgan (ostatka): 1 800 000", self.sent_text)
 
     def _record_reply(self):
         async def reply_text(text, *args, **kwargs):
