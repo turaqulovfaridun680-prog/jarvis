@@ -10,8 +10,10 @@ from difflib import SequenceMatcher
 from functools import wraps
 from pathlib import Path
 from contextlib import contextmanager
+from typing import Optional, Literal
 
 from openai import OpenAI
+from pydantic import BaseModel
 
 from telegram import (
     BotCommand,
@@ -1409,6 +1411,70 @@ Foydalanuvchining oxirgi xabariga javob ber.
     save_chat(chat_id, "assistant", javob)
 
     return javob
+
+
+class QarzXabariNatija(BaseModel):
+    qarz_xabarimi: bool
+    dokon_nomi: Optional[str] = None
+    harakat: Optional[Literal["QARZ", "TULOV"]] = None
+    summa: Optional[int] = None
+    qoldiq: Optional[int] = None
+
+
+QARZ_AI_SYSTEM = """
+Sen SORO pekarniyasining qarzdorlik guruhidagi xabarlarni tahlil qilasan.
+
+Biznes modeli: SORO do'konlarga mahsulot jo'natadi, do'konlar shu mahsulot uchun
+SORO'ga qarzdor bo'ladi (aksincha emas — SORO hech kimdan qarzga tovar OLMAYDI,
+faqat BERADI). Harakatni MA'NOSIGA qarab aniqla, so'zlarga emas:
+- Do'konga mahsulot/pul BERILGANI (yukladik, jo'natdik, qarzga berdik, qarzdor
+  qildik) -> harakat="QARZ" (do'konning SORO'ga qarzi OSHADI).
+- Do'kondan pul/to'lov QAYTARIB OLINGANI (oldim, qaytardi, to'ladi, to'lov qildi) ->
+  harakat="TULOV" (do'konning qarzi KAMAYADI). MUHIM: "dan ... oldim" — "do'kondan
+  pul oldim" — bu SORO pul olgani, ya'ni do'kon TO'LAGANI, shuning uchun har doim
+  TULOV, hech qachon QARZ emas — garchi xabarda "qarz" so'zi bo'lmasa ham.
+
+Misollar:
+- "Chinor 2 dan 452000 sum qarz berdik" -> QARZ, dokon_nomi="Chinor 2", summa=452000
+- "Chinor 2 dan 200000 sum oldim" -> TULOV, dokon_nomi="Chinor 2", summa=200000
+- "Bek market ga 300000 sum yukladik" -> QARZ, dokon_nomi="Bek market", summa=300000
+- "Bek market to'ladi 150000" -> TULOV, dokon_nomi="Bek market", summa=150000
+
+Do'kon nomini xabardan ajratib olishda faqat pul summasi, "qarz", "oldim", "dan",
+"ga", "sum", "сум" so'zlarini olib tashla — nomning o'zidagi raqam yoki tartib
+sonini (masalan "Chinor 2", "Do'kon №3") HECH QACHON kesib tashlama, u nomning
+ajralmas qismi.
+
+Xabarda "остатка"/"qoldiq"/"balans" so'zi bilan do'konning YAKUNIY qoldig'i
+aytilgan bo'lsa, uni "qoldiq" maydoniga yoz (bu tranzaksiya summasiga qo'shilmaydi).
+
+Agar xabarda FAQAT qoldiq/balans aytilgan bo'lsa (yangi tranzaksiya yo'q, masalan
+"Chinor qoldig'i 100000" yoki "Chinor остатка 100000"), qarz_xabarimi=true,
+harakat va summa bo'sh (null), qoldiq esa to'ldirilgan holda qaytar.
+
+Xabar umuman qarz/to'lov/qoldiq haqida bo'lmasa (oddiy suhbat, savol va h.k.),
+qarz_xabarimi=false qaytar, boshqa maydonlarni bo'sh qoldir.
+Xabar rus, o'zbek (lotin/kiril) tillarida, imlo xatolari bilan bo'lishi mumkin.
+"""
+
+
+async def qarz_ai_tahlil(xabar):
+    try:
+        response = await asyncio.to_thread(
+            client.responses.parse,
+            model="gpt-4o-mini",
+            input=[
+                {"role": "system", "content": QARZ_AI_SYSTEM},
+                {"role": "user", "content": xabar},
+            ],
+            text_format=QarzXabariNatija,
+        )
+        return response.output_parsed
+    except Exception as e:
+        print(f"QARZ AI TAHLIL XATOSI: {e}")
+        return None
+
+
 async def qarz_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -1418,9 +1484,41 @@ async def qarz_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     xabar = update.message.text
-    kim = update.effective_user.first_name or "Noma\'lum"
+    kim = update.effective_user.first_name or "Noma'lum"
     print(f"QARZ GURUHI | {kim}: {xabar}")
 
+    if not re.search(r"\d", xabar):
+        return
+
+    natija = await qarz_ai_tahlil(xabar)
+    if natija is not None:
+        if not natija.qarz_xabarimi or not natija.dokon_nomi:
+            return
+        magazin = natija.dokon_nomi
+
+        if natija.harakat and natija.summa:
+            add_debt(
+                magazin, natija.summa, natija.harakat, xabar, kim,
+                chat.id, update.message.message_id,
+            )
+            print(f"{natija.harakat} SAQLANDI (AI) | {magazin} | {natija.summa} | {kim}")
+
+        if natija.qoldiq is not None:
+            hozirgi_qoldiq = get_debt_balance(magazin)
+            farq = natija.qoldiq - hozirgi_qoldiq
+            if farq > 0:
+                add_debt(magazin, farq, "QARZ", f"AUTO QOLDIQ TUZATISH | {xabar}", kim)
+            elif farq < 0:
+                add_debt(magazin, abs(farq), "TULOV", f"AUTO QOLDIQ TUZATISH | {xabar}", kim)
+            print(f"QOLDIQ TENGLANDI (AI) | {magazin} | {natija.qoldiq} | {kim}")
+        return
+
+    # AI mavjud bo'lmasa (masalan tarmoq xatosi), eski kalit-so'z asosidagi
+    # tahlilga qaytamiz — qarz kuzatuvi hech qachon butunlay to'xtamasligi kerak.
+    await qarz_guruh_regex(update, context, xabar, kim, chat)
+
+
+async def qarz_guruh_regex(update: Update, context: ContextTypes.DEFAULT_TYPE, xabar, kim, chat):
     past = xabar.lower().replace("’", "'").replace("‘", "'")
     for eski, yangi in (("қарз", "qarz"), ("карз", "qarz"), ("қариз", "qarz"), ("кариз", "qarz"), ("олдим", "oldim")):
         past = past.replace(eski, yangi)

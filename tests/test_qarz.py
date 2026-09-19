@@ -8,7 +8,10 @@ from jarvis_bot import application as app
 from jarvis_bot import database as jarvis_database
 
 
-class QarzGuruhTests(unittest.IsolatedAsyncioTestCase):
+class QarzGuruhRegexFallbackTests(unittest.IsolatedAsyncioTestCase):
+    """AI mavjud bo'lmagan holatni simulyatsiya qilib, eski kalit-so'z asosidagi
+    zaxira mantiqni tekshiradi — bu real tarmoq/API so'rovi yubormaydi."""
+
     async def asyncSetUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -23,6 +26,11 @@ class QarzGuruhTests(unittest.IsolatedAsyncioTestCase):
         base = patch.object(app, "BASE_DIR", Path(self.directory.name))
         base.start()
         self.addCleanup(base.stop)
+
+        ai_off = patch.object(app, "qarz_ai_tahlil", AsyncMock(return_value=None))
+        ai_off.start()
+        self.addCleanup(ai_off.stop)
+
         self._message_id = 0
 
     def _restore_db_path(self):
@@ -66,6 +74,71 @@ class QarzGuruhTests(unittest.IsolatedAsyncioTestCase):
         update = self.make_update("Chinor 2 dan 452.000 сум qarz berdik", chat_id="999")
         await app.qarz_guruh(update, SimpleNamespace())
         self.assertEqual(jarvis_database.get_debt_summary(), [])
+
+
+class QarzGuruhAiTests(unittest.IsolatedAsyncioTestCase):
+    """qarz_ai_tahlil natijasini soxtalashtirib, AI yo'li orkestratsiyasini
+    tekshiradi — real OpenAI so'rovi yubormaydi (tez, bepul, deterministik)."""
+
+    async def asyncSetUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.old_path = jarvis_database.DB_PATH
+        jarvis_database.DB_PATH = Path(self.directory.name) / "test.db"
+        jarvis_database.init_db()
+        self.addCleanup(self._restore_db_path)
+
+        group_id = patch.object(app, "DEBT_GROUP_CHAT_ID", "-5026417146")
+        group_id.start()
+        self.addCleanup(group_id.stop)
+        base = patch.object(app, "BASE_DIR", Path(self.directory.name))
+        base.start()
+        self.addCleanup(base.stop)
+        self._message_id = 0
+
+    def _restore_db_path(self):
+        jarvis_database.DB_PATH = self.old_path
+
+    def make_update(self, text, chat_id="-5026417146", first_name="Haydovchi Ali"):
+        self._message_id += 1
+        return SimpleNamespace(
+            message=SimpleNamespace(text=text, message_id=self._message_id),
+            effective_chat=SimpleNamespace(id=chat_id),
+            effective_user=SimpleNamespace(first_name=first_name),
+        )
+
+    async def test_ai_transaction_is_recorded(self):
+        natija = app.QarzXabariNatija(
+            qarz_xabarimi=True, dokon_nomi="Chinor 2", harakat="QARZ", summa=452000,
+        )
+        with patch.object(app, "qarz_ai_tahlil", AsyncMock(return_value=natija)):
+            await app.qarz_guruh(self.make_update("Chinor 2 dan 452000 sum qarz berdik"), SimpleNamespace())
+
+        rows = jarvis_database.get_debt_summary()
+        self.assertEqual(rows[0], ("Chinor 2", "Haydovchi Ali", 452000))
+
+    async def test_ai_balance_only_message_adjusts_without_new_transaction(self):
+        jarvis_database.add_debt("Chinor 2", 300000, "QARZ", "", "Haydovchi Ali")
+        natija = app.QarzXabariNatija(
+            qarz_xabarimi=True, dokon_nomi="Chinor 2", harakat=None, summa=None, qoldiq=100000,
+        )
+        with patch.object(app, "qarz_ai_tahlil", AsyncMock(return_value=natija)):
+            await app.qarz_guruh(self.make_update("Chinor 2 остатка 100000"), SimpleNamespace())
+
+        rows = jarvis_database.get_debt_summary()
+        self.assertEqual(sum(r[2] for r in rows), 100000)
+
+    async def test_ai_non_debt_message_is_ignored(self):
+        natija = app.QarzXabariNatija(qarz_xabarimi=False)
+        with patch.object(app, "qarz_ai_tahlil", AsyncMock(return_value=natija)):
+            await app.qarz_guruh(self.make_update("Salom qalaysiz"), SimpleNamespace())
+        self.assertEqual(jarvis_database.get_debt_summary(), [])
+
+    async def test_message_with_no_digits_skips_ai_call(self):
+        ai_mock = AsyncMock(return_value=None)
+        with patch.object(app, "qarz_ai_tahlil", ai_mock):
+            await app.qarz_guruh(self.make_update("Salom qalaysiz"), SimpleNamespace())
+        ai_mock.assert_not_awaited()
 
 
 class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
