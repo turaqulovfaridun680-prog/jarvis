@@ -1747,7 +1747,12 @@ def qarz_yoz_handler():
             QY_ACTION: [CallbackQueryHandler(qarz_yoz_action, pattern=r"^(qzt:QARZ|qzt:TULOV|qzcancel)$")],
             QY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, qarz_yoz_amount)],
         },
-        fallbacks=[CommandHandler("bekor", qarz_yoz_cancel)],
+        fallbacks=[
+            CommandHandler("bekor", qarz_yoz_cancel),
+            # Eski suhbatda "qotib qolgan" bo'lsa ham /qarz_yoz har doim
+            # yangidan boshlay olishi uchun.
+            CommandHandler("qarz_yoz", qarz_yoz_start),
+        ],
     )
 
 
