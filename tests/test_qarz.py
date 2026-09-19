@@ -174,5 +174,38 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.message.reply_text.assert_awaited_once()
 
 
+class QarzCommandTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.old_path = jarvis_database.DB_PATH
+        jarvis_database.DB_PATH = Path(self.directory.name) / "test.db"
+        jarvis_database.init_db()
+        self.addCleanup(self._restore_db_path)
+
+    def _restore_db_path(self):
+        jarvis_database.DB_PATH = self.old_path
+
+    async def test_qarz_command_shows_daily_activity_and_grand_total(self):
+        jarvis_database.add_debt("Chinor 2", 500000, "QARZ", "", "Ali")
+        jarvis_database.add_debt("Chinor 2", 200000, "TULOV", "", "Ali")
+        jarvis_database.add_debt("Bek Market", 300000, "QARZ", "", "Vali")
+
+        sent = {}
+
+        async def reply_text(text, *args, **kwargs):
+            sent["text"] = text
+
+        update = SimpleNamespace(message=SimpleNamespace(reply_text=reply_text))
+        context = SimpleNamespace(args=[])
+        await app.qarz(update, context)
+
+        text = sent["text"]
+        self.assertIn("Bismillahir rohmanir rohim", text)
+        self.assertIn("Qarzga berildi: 800 000", text)
+        self.assertIn("Qaytarildi (to‘lov): 200 000", text)
+        self.assertIn("JAMI (barcha do‘konlar bizdan qarzdor): 600 000", text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -345,6 +345,43 @@ def get_debt_summary():
     return rows
 
 
+def get_debt_daily_summary(sana=None):
+    """Berilgan Toshkent sanasida (standart: bugun) qarzga berilgan va
+    qaytarilgan (to'lov) jami summalarni {"QARZ": ..., "TULOV": ...} shaklida qaytaradi."""
+    con = connect()
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS debts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shop_name TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            note TEXT,
+            employee_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    if sana:
+        cur.execute("""
+            SELECT action, COALESCE(SUM(amount), 0)
+            FROM debts
+            WHERE DATE(created_at, '+5 hours') = ?
+            GROUP BY action
+        """, (sana,))
+    else:
+        cur.execute("""
+            SELECT action, COALESCE(SUM(amount), 0)
+            FROM debts
+            WHERE DATE(created_at, '+5 hours') = DATE('now', '+5 hours')
+            GROUP BY action
+        """)
+    totals = {"QARZ": 0, "TULOV": 0}
+    for action, amount in cur.fetchall():
+        totals[action] = amount
+    con.close()
+    return totals
+
+
 def get_debt_shops():
     con = connect()
     cur = con.cursor()

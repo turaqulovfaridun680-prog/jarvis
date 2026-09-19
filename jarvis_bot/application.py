@@ -43,6 +43,7 @@ from .database import (
      get_debt_balance,
     get_debt_summary,
     get_debt_shops,
+    get_debt_daily_summary,
 )
 from .config import ROOT_DIR, settings
 
@@ -2194,9 +2195,15 @@ async def oylik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Oylik davomatni olishda xato: {e}")
 async def qarz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        sana = context.args[0] if context.args else uz_today()
+        kunlik = get_debt_daily_summary(sana)
         rows = get_debt_summary()
 
-        text = "💰 SORO — QARZDORLIKLAR\n\n"
+        text = "Bismillahir rohmanir rohim\n\n💰 SORO — QARZDORLIKLAR\n\n"
+        text += f"📅 {sana}:\n"
+        text += f"📥 Qarzga berildi: {kunlik['QARZ']:,} so‘m\n".replace(",", " ")
+        text += f"📤 Qaytarildi (to‘lov): {kunlik['TULOV']:,} so‘m\n".replace(",", " ")
+        text += "━━━━━━━━━━\n\n"
         jami = 0
 
         for shop_name, employee_name, balance in rows:
@@ -2212,7 +2219,7 @@ async def qarz(update: Update, context: ContextTypes.DEFAULT_TYPE):
             jami += balance
 
         text += "━━━━━━━━━━\n"
-        text += f"💰 JAMI: {jami:,} so‘m".replace(",", " ")
+        text += f"💰 JAMI (barcha do‘konlar bizdan qarzdor): {jami:,} so‘m".replace(",", " ")
 
         await send_long_message(update.message, text)
 
