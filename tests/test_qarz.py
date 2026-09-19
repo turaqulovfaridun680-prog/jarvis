@@ -248,6 +248,59 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state, app.ConversationHandler.END)
         self.message.reply_text.assert_awaited_once()
 
+    async def test_selecting_a_shop_shows_its_existing_balance(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.query.data = "qzs:0"
+        await app.qarz_yoz_shop(self.update, self.context)
+
+        shown = self.query.edit_message_text.call_args.args[0]
+        self.assertIn("Hozirgi qarz holati: 452 000", shown)
+        self.assertIn("qarzdor", shown)
+
+    async def test_typing_a_prefix_narrows_to_a_single_match_and_shows_balance(self):
+        jarvis_database.add_debt("Chinor 2", 300000, "QARZ", "", "Sotuvchi Vali")
+        jarvis_database.add_debt("Bek Market", 100000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "chinor"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+
+        self.assertEqual(state, app.QY_ACTION)
+        self.assertEqual(self.context.user_data["qarz_shop_name"], "Chinor 2")
+        shown = self.message.reply_text.call_args.args[0]
+        self.assertIn("Hozirgi qarz holati: 300 000", shown)
+
+    async def test_typing_ambiguous_prefix_shows_filtered_list(self):
+        jarvis_database.add_debt("Chinor 2", 300000, "QARZ", "", "Sotuvchi Vali")
+        jarvis_database.add_debt("Chinor Bozor", 100000, "QARZ", "", "Sotuvchi Vali")
+        jarvis_database.add_debt("Bek Market", 50000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "chinor"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+
+        self.assertEqual(state, app.QY_SHOP)
+        keyboard = self.message.reply_text.call_args.kwargs["reply_markup"].inline_keyboard
+        names = {b.text for row in keyboard for b in row}
+        self.assertIn("Chinor 2", names)
+        self.assertIn("Chinor Bozor", names)
+        self.assertNotIn("Bek Market", names)
+
+    async def test_typing_unknown_name_offers_new_shop(self):
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "Notanish Market"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+        self.assertEqual(state, app.QY_SHOP)
+        self.assertIn("topilmadi", self.message.reply_text.call_args.args[0])
+
+    async def test_typing_yangi_keyword_starts_new_shop_flow(self):
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "yangi"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+        self.assertEqual(state, app.QY_NEW_SHOP)
+
 
 class QarzCommandTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

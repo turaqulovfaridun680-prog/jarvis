@@ -1645,6 +1645,15 @@ def qarz_action_keyboard():
     ])
 
 
+def qarz_holat_matni(magazin):
+    qoldiq = get_debt_balance(magazin, qarz_boshlanish_sanasi())
+    if qoldiq > 0:
+        return f"💵 Hozirgi qarz holati: {qoldiq:,} so‘m (do'kon qarzdor)".replace(",", " ")
+    if qoldiq < 0:
+        return f"💵 Hozirgi qarz holati: {abs(qoldiq):,} so‘m (do'kon ortiqcha to'lagan)".replace(",", " ")
+    return "💵 Hozirgi qarz holati: 0 so‘m"
+
+
 async def qarz_yoz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not DEBT_GROUP_CHAT_ID or str(update.effective_chat.id) != str(DEBT_GROUP_CHAT_ID):
         await update.message.reply_text("Bu buyruq faqat qarz guruhida ishlaydi.")
@@ -1652,7 +1661,8 @@ async def qarz_yoz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     shops = get_debt_shops()
     context.user_data["qarz_shops"] = shops
     await update.message.reply_text(
-        "🏪 Qaysi do'kon?", reply_markup=qarz_shop_keyboard(shops)
+        "🏪 Qaysi do'kon?\n\nRo'yxatdan tanlang yoki nomini (bosh harflarini ham) yozib qidiring:",
+        reply_markup=qarz_shop_keyboard(shops),
     )
     return QY_SHOP
 
@@ -1671,11 +1681,49 @@ async def qarz_yoz_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if index >= len(shops):
         await query.edit_message_text("❌ Do'kon topilmadi, qaytadan /qarz_yoz yozing.")
         return ConversationHandler.END
-    context.user_data["qarz_shop_name"] = shops[index]
+    magazin = shops[index]
+    context.user_data["qarz_shop_name"] = magazin
     await query.edit_message_text(
-        f"🏪 Do'kon: {shops[index]}\n\nQarz yoki to'lov?", reply_markup=qarz_action_keyboard()
+        f"🏪 Do'kon: {magazin}\n{qarz_holat_matni(magazin)}\n\nQarz yoki to'lov?",
+        reply_markup=qarz_action_keyboard(),
     )
     return QY_ACTION
+
+
+async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    matn = update.message.text.strip()
+    if not matn:
+        return QY_SHOP
+    if matn.casefold() in ("yangi", "янги"):
+        await update.message.reply_text("✍️ Do'kon nomini yozing:")
+        return QY_NEW_SHOP
+
+    barcha = context.user_data.get("qarz_shops") or get_debt_shops()
+    qidiruv_cf = matn.casefold()
+    mos = [d for d in barcha if qidiruv_cf in d.casefold()]
+
+    if len(mos) == 1:
+        magazin = mos[0]
+        context.user_data["qarz_shop_name"] = magazin
+        await update.message.reply_text(
+            f"🏪 Do'kon: {magazin}\n{qarz_holat_matni(magazin)}\n\nQarz yoki to'lov?",
+            reply_markup=qarz_action_keyboard(),
+        )
+        return QY_ACTION
+
+    if not mos:
+        await update.message.reply_text(
+            f"❌ \"{matn}\" bo'yicha do'kon topilmadi.\n"
+            "Boshqa nom bilan qidiring, yoki yangi do'kon uchun «yangi» deb yozing."
+        )
+        return QY_SHOP
+
+    context.user_data["qarz_shops"] = mos
+    await update.message.reply_text(
+        f"🔎 \"{matn}\" bo'yicha {len(mos)} ta do'kon topildi:",
+        reply_markup=qarz_shop_keyboard(mos),
+    )
+    return QY_SHOP
 
 
 async def qarz_yoz_new_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1685,7 +1733,8 @@ async def qarz_yoz_new_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return QY_NEW_SHOP
     context.user_data["qarz_shop_name"] = nom
     await update.message.reply_text(
-        f"🏪 Do'kon: {nom}\n\nQarz yoki to'lov?", reply_markup=qarz_action_keyboard()
+        f"🏪 Do'kon: {nom}\n{qarz_holat_matni(nom)}\n\nQarz yoki to'lov?",
+        reply_markup=qarz_action_keyboard(),
     )
     return QY_ACTION
 
@@ -1742,7 +1791,10 @@ def qarz_yoz_handler():
     return ConversationHandler(
         entry_points=[CommandHandler("qarz_yoz", qarz_yoz_start)],
         states={
-            QY_SHOP: [CallbackQueryHandler(qarz_yoz_shop, pattern=r"^(qzs:\d+|qznew|qzcancel)$")],
+            QY_SHOP: [
+                CallbackQueryHandler(qarz_yoz_shop, pattern=r"^(qzs:\d+|qznew|qzcancel)$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, qarz_yoz_shop_search),
+            ],
             QY_NEW_SHOP: [MessageHandler(filters.TEXT & ~filters.COMMAND, qarz_yoz_new_shop)],
             QY_ACTION: [CallbackQueryHandler(qarz_yoz_action, pattern=r"^(qzt:QARZ|qzt:TULOV|qzcancel)$")],
             QY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, qarz_yoz_amount)],
