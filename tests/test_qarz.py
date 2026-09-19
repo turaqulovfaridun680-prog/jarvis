@@ -445,5 +445,99 @@ class QarzCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(app.uz_today(), sent["text"])
 
 
+class QarzTuzatTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.old_path = jarvis_database.DB_PATH
+        jarvis_database.DB_PATH = Path(self.directory.name) / "test.db"
+        jarvis_database.init_db()
+        self.addCleanup(self._restore_db_path)
+
+        group_id = patch.object(app, "DEBT_GROUP_CHAT_ID", "-5026417146")
+        group_id.start()
+        self.addCleanup(group_id.stop)
+
+        self.message = SimpleNamespace(text="", reply_text=AsyncMock())
+        self.query = SimpleNamespace(
+            data="", answer=AsyncMock(), edit_message_text=AsyncMock(),
+        )
+        self.update = SimpleNamespace(
+            message=self.message, callback_query=self.query,
+            effective_chat=SimpleNamespace(id="-5026417146"),
+            effective_user=SimpleNamespace(id=111, first_name="Admin Ali"),
+        )
+        self.context = SimpleNamespace(user_data={})
+
+    def _restore_db_path(self):
+        jarvis_database.DB_PATH = self.old_path
+
+    async def test_start_lists_recent_entries_as_buttons(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Ali")
+        jarvis_database.add_debt("Bek Market", 100000, "TULOV", "", "Vali")
+
+        await app.qarz_tuzat(self.update, self.context)
+
+        keyboard = self.message.reply_text.call_args.kwargs["reply_markup"].inline_keyboard
+        texts = [b.text for row in keyboard for b in row]
+        self.assertTrue(any("Chinor 2" in t for t in texts))
+        self.assertTrue(any("Bek Market" in t for t in texts))
+
+    async def test_no_entries_shows_a_message_instead_of_empty_list(self):
+        await app.qarz_tuzat(self.update, self.context)
+        self.message.reply_text.assert_awaited_once()
+        self.assertNotIn("reply_markup", self.message.reply_text.call_args.kwargs)
+
+    async def test_outside_debt_group_is_rejected(self):
+        self.update.effective_chat = SimpleNamespace(id="999")
+        await app.qarz_tuzat(self.update, self.context)
+        self.assertIn("faqat qarz guruhida", self.message.reply_text.call_args.args[0])
+
+    async def test_non_admin_cannot_use_the_callback(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Ali")
+        row = jarvis_database.get_recent_debts(1)[0]
+
+        with patch.object(app, "is_admin_user", return_value=False):
+            self.query.data = f"qtd:{row['id']}"
+            await app.qarz_tuzat_callback(self.update, self.context)
+
+        self.query.edit_message_text.assert_not_awaited()
+        self.assertIsNotNone(jarvis_database.get_debt_by_id(row["id"]))
+
+    async def test_selecting_an_entry_asks_for_confirmation_without_deleting(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Ali")
+        row = jarvis_database.get_recent_debts(1)[0]
+
+        with patch.object(app, "is_admin_user", return_value=True):
+            self.query.data = f"qtd:{row['id']}"
+            await app.qarz_tuzat_callback(self.update, self.context)
+
+        shown = self.query.edit_message_text.call_args.args[0]
+        self.assertIn("Rostdan ham o'chirilsinmi", shown)
+        self.assertIn("Chinor 2", shown)
+        self.assertIsNotNone(jarvis_database.get_debt_by_id(row["id"]))
+
+    async def test_confirming_deletes_the_entry(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Ali")
+        row = jarvis_database.get_recent_debts(1)[0]
+
+        with patch.object(app, "is_admin_user", return_value=True):
+            self.query.data = f"qtdel:{row['id']}"
+            await app.qarz_tuzat_callback(self.update, self.context)
+
+        self.assertIn("o'chirildi", self.query.edit_message_text.call_args.args[0])
+        self.assertIsNone(jarvis_database.get_debt_by_id(row["id"]))
+
+    async def test_declining_confirmation_keeps_the_entry(self):
+        jarvis_database.add_debt("Chinor 2", 452000, "QARZ", "", "Ali")
+        row = jarvis_database.get_recent_debts(1)[0]
+
+        with patch.object(app, "is_admin_user", return_value=True):
+            self.query.data = "qtclose"
+            await app.qarz_tuzat_callback(self.update, self.context)
+
+        self.assertIsNotNone(jarvis_database.get_debt_by_id(row["id"]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,6 +46,9 @@ from .database import (
     get_debt_summary,
     get_debt_shops,
     get_debt_daily_summary,
+    get_recent_debts,
+    get_debt_by_id,
+    delete_debt,
 )
 from .config import ROOT_DIR, settings
 
@@ -2476,6 +2479,71 @@ async def qarz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(f"❌ Qarz hisobini olishda xato: {e}")
 
+
+def qarz_tuzat_qatori_matni(row):
+    belgi = "📥" if row["action"] == "QARZ" else "📤"
+    xodim = row["employee_name"] or "Noma'lum"
+    return (
+        f"{belgi} {row['shop_name']} — {row['amount']:,} so‘m ({xodim})"
+    ).replace(",", " ")
+
+
+async def qarz_tuzat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not DEBT_GROUP_CHAT_ID or str(update.effective_chat.id) != str(DEBT_GROUP_CHAT_ID):
+        await update.message.reply_text("Bu buyruq faqat qarz guruhida ishlaydi.")
+        return
+    rows = get_recent_debts(10)
+    if not rows:
+        await update.message.reply_text("Hali hech qanday yozuv yo'q.")
+        return
+    buttons = [
+        [InlineKeyboardButton(qarz_tuzat_qatori_matni(row)[:64], callback_data=f"qtd:{row['id']}")]
+        for row in rows
+    ]
+    buttons.append([InlineKeyboardButton("❌ Yopish", callback_data="qtclose")])
+    await update.message.reply_text(
+        "🗑 Xato kiritilgan yozuvni tanlang (oxirgi 10 tasi ko'rsatilmoqda):\n\n"
+        "Tanlagach o'chirish tasdiqlanadi.",
+        reply_markup=InlineKeyboardMarkup(buttons),
+    )
+
+
+async def qarz_tuzat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not is_admin_user(update.effective_user):
+        await query.answer("⛔ Bu faqat administrator uchun.", show_alert=True)
+        return
+    await query.answer()
+    data = query.data
+
+    if data == "qtclose":
+        await query.edit_message_text("Yopildi.")
+        return
+
+    if data.startswith("qtd:"):
+        row_id = int(data.split(":")[1])
+        row = get_debt_by_id(row_id)
+        if not row:
+            await query.edit_message_text("❌ Bu yozuv topilmadi (ehtimol allaqachon o'chirilgan).")
+            return
+        await query.edit_message_text(
+            f"⚠️ Rostdan ham o'chirilsinmi?\n\n{qarz_tuzat_qatori_matni(row)}",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Ha, o'chir", callback_data=f"qtdel:{row_id}")],
+                [InlineKeyboardButton("❌ Yo'q", callback_data="qtclose")],
+            ]),
+        )
+        return
+
+    if data.startswith("qtdel:"):
+        row_id = int(data.split(":")[1])
+        if delete_debt(row_id):
+            await query.edit_message_text("✅ Yozuv o'chirildi.")
+        else:
+            await query.edit_message_text("❌ Bu yozuv topilmadi (ehtimol allaqachon o'chirilgan).")
+        return
+
+
 def build_application():
     init_db()
     init_delivery_db()
@@ -2570,6 +2638,12 @@ def build_application():
     )
     app.add_handler(
         CommandHandler("qarz_bosh", admin_only(qarz_bosh))
+    )
+    app.add_handler(
+        CommandHandler("qarz_tuzat", admin_only(qarz_tuzat))
+    )
+    app.add_handler(
+        CallbackQueryHandler(qarz_tuzat_callback, pattern=r"^(qtd:\d+|qtdel:\d+|qtclose)$")
     )
     app.add_handler(
         CommandHandler("xomashyo_hisobot", admin_only(xomashyo_hisobot))

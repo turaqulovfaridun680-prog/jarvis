@@ -406,6 +406,64 @@ def get_debt_shops():
     return shops
 
 
+def get_recent_debts(limit=10):
+    con = connect()
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS debts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shop_name TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            note TEXT,
+            employee_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        SELECT id, shop_name, amount, action, employee_name, created_at
+        FROM debts ORDER BY id DESC LIMIT ?
+    """, (limit,))
+    rows = cur.fetchall()
+    con.close()
+    return rows
+
+
+def get_debt_by_id(debt_id):
+    con = connect()
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS debts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shop_name TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            note TEXT,
+            employee_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("""
+        SELECT id, shop_name, amount, action, employee_name, created_at
+        FROM debts WHERE id=?
+    """, (debt_id,))
+    row = cur.fetchone()
+    con.close()
+    return row
+
+
+def delete_debt(debt_id):
+    con = connect()
+    cur = con.cursor()
+    cur.execute("DELETE FROM debts WHERE id=?", (debt_id,))
+    con.commit()
+    tozalandi = cur.rowcount > 0
+    con.close()
+    return tozalandi
+
+
 if __name__ == "__main__":
     init_db()
     print("JARVIS database tayyor:", DB_PATH)
