@@ -1700,7 +1700,7 @@ async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYP
 
     barcha = context.user_data.get("qarz_shops") or get_debt_shops()
     qidiruv_cf = matn.casefold()
-    mos = [d for d in barcha if qidiruv_cf in d.casefold()]
+    mos = [d for d in barcha if d.casefold().startswith(qidiruv_cf)]
 
     if len(mos) == 1:
         magazin = mos[0]

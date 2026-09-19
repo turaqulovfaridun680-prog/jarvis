@@ -295,6 +295,18 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state, app.QY_SHOP)
         self.assertIn("topilmadi", self.message.reply_text.call_args.args[0])
 
+    async def test_search_matches_only_the_beginning_of_the_name(self):
+        # "Market" so'zi "Bek Market" ichida bor, lekin nomning BOSHIDA emas.
+        jarvis_database.add_debt("Bek Market", 100000, "QARZ", "", "Sotuvchi Vali")
+        jarvis_database.add_debt("Market Plus", 200000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "market"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+
+        self.assertEqual(state, app.QY_ACTION)
+        self.assertEqual(self.context.user_data["qarz_shop_name"], "Market Plus")
+
     async def test_typing_yangi_keyword_starts_new_shop_flow(self):
         await app.qarz_yoz_start(self.update, self.context)
         self.message.text = "yangi"
