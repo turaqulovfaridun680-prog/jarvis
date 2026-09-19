@@ -345,6 +345,26 @@ def get_debt_summary():
     return rows
 
 
+def get_debt_shops():
+    con = connect()
+    cur = con.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS debts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            shop_name TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            note TEXT,
+            employee_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("SELECT DISTINCT shop_name FROM debts ORDER BY shop_name COLLATE NOCASE")
+    shops = [row[0] for row in cur.fetchall()]
+    con.close()
+    return shops
+
+
 if __name__ == "__main__":
     init_db()
     print("JARVIS database tayyor:", DB_PATH)
