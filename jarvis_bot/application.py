@@ -2140,10 +2140,12 @@ def build_application():
         )
     )
     if DEBT_GROUP_CHAT_ID:
+        # Guruhda haydovchilar va sotuvchilar ham qarz/to'lov yozadi,
+        # shuning uchun admin_only bilan cheklanmaydi.
         app.add_handler(
             MessageHandler(
                 filters.Chat(chat_id=int(DEBT_GROUP_CHAT_ID)) & filters.TEXT & ~filters.COMMAND,
-                admin_only(qarz_guruh),
+                qarz_guruh,
             )
         )
     if BOZOR_GROUP_CHAT_ID:
