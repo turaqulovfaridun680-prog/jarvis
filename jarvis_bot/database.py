@@ -274,7 +274,7 @@ def add_debt(shop_name, amount, action, note="", employee_name="", telegram_chat
     con.close()
 
 
-def get_debt_balance(shop_name=None):
+def get_debt_balance(shop_name=None, boshlanish_sanasi=None):
     con = connect()
     cur = con.cursor()
 
@@ -290,17 +290,15 @@ def get_debt_balance(shop_name=None):
         )
     """)
 
+    query = "SELECT action, amount FROM debts WHERE 1=1"
+    params = []
     if shop_name:
-        cur.execute("""
-            SELECT action, amount
-            FROM debts
-            WHERE LOWER(shop_name) = LOWER(?)
-        """, (shop_name,))
-    else:
-        cur.execute("""
-            SELECT action, amount
-            FROM debts
-        """)
+        query += " AND LOWER(shop_name) = LOWER(?)"
+        params.append(shop_name)
+    if boshlanish_sanasi:
+        query += " AND DATE(created_at, '+5 hours') >= ?"
+        params.append(boshlanish_sanasi)
+    cur.execute(query, params)
 
     rows = cur.fetchall()
     con.close()
@@ -314,7 +312,7 @@ def get_debt_balance(shop_name=None):
             balance -= amount
 
     return balance
-def get_debt_summary():
+def get_debt_summary(boshlanish_sanasi=None):
     con = connect()
     cur = con.cursor()
 
@@ -329,7 +327,7 @@ def get_debt_summary():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cur.execute("""
+    query = """
         SELECT shop_name, COALESCE(employee_name, ''),
                SUM(CASE
                    WHEN action = 'QARZ' THEN amount
@@ -337,8 +335,14 @@ def get_debt_summary():
                    ELSE 0
                END)
         FROM debts
-        GROUP BY shop_name, employee_name
-    """)
+        WHERE 1=1
+    """
+    params = []
+    if boshlanish_sanasi:
+        query += " AND DATE(created_at, '+5 hours') >= ?"
+        params.append(boshlanish_sanasi)
+    query += " GROUP BY shop_name, employee_name"
+    cur.execute(query, params)
 
     rows = cur.fetchall()
     con.close()

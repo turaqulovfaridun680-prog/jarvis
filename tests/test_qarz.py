@@ -94,6 +94,7 @@ class QarzGuruhAiTests(unittest.IsolatedAsyncioTestCase):
         base = patch.object(app, "BASE_DIR", Path(self.directory.name))
         base.start()
         self.addCleanup(base.stop)
+        app.init_delivery_db()
         self._message_id = 0
 
     def _restore_db_path(self):
@@ -156,6 +157,7 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         base = patch.object(app, "BASE_DIR", Path(self.directory.name))
         base.start()
         self.addCleanup(base.stop)
+        app.init_delivery_db()
 
         self.message = SimpleNamespace(
             text="", message_id=1, reply_text=AsyncMock(),
@@ -256,6 +258,11 @@ class QarzCommandTests(unittest.IsolatedAsyncioTestCase):
         jarvis_database.init_db()
         self.addCleanup(self._restore_db_path)
 
+        base = patch.object(app, "BASE_DIR", Path(self.directory.name))
+        base.start()
+        self.addCleanup(base.stop)
+        app.init_delivery_db()
+
     def _restore_db_path(self):
         jarvis_database.DB_PATH = self.old_path
 
@@ -278,6 +285,32 @@ class QarzCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Qarzga berildi: 800 000", text)
         self.assertIn("Qaytarildi (to‘lov): 200 000", text)
         self.assertIn("JAMI (barcha do‘konlar bizdan qarzdor): 600 000", text)
+
+    async def test_qarz_bosh_excludes_entries_before_the_cutoff(self):
+        con = jarvis_database.connect()
+        con.execute(
+            "INSERT INTO debts(shop_name, amount, action, employee_name, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("Eski Do'kon", 999000, "QARZ", "Ali", "2020-01-01 00:00:00"),
+        )
+        con.commit()
+        con.close()
+        jarvis_database.add_debt("Yangi Do'kon", 100000, "QARZ", "", "Vali")
+
+        set_update = SimpleNamespace(message=SimpleNamespace(reply_text=AsyncMock()))
+        await app.qarz_bosh(set_update, SimpleNamespace(args=[app.uz_today()]))
+
+        sent = {}
+
+        async def reply_text(text, *args, **kwargs):
+            sent["text"] = text
+
+        report_update = SimpleNamespace(message=SimpleNamespace(reply_text=reply_text))
+        await app.qarz(report_update, SimpleNamespace(args=[]))
+
+        self.assertNotIn("Eski Do'kon", sent["text"])
+        self.assertIn("Yangi Do'kon", sent["text"])
+        self.assertIn(app.uz_today(), sent["text"])
 
 
 if __name__ == "__main__":

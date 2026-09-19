@@ -1504,7 +1504,7 @@ async def qarz_guruh(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"{natija.harakat} SAQLANDI (AI) | {magazin} | {natija.summa} | {kim}")
 
         if natija.qoldiq is not None:
-            hozirgi_qoldiq = get_debt_balance(magazin)
+            hozirgi_qoldiq = get_debt_balance(magazin, qarz_boshlanish_sanasi())
             farq = natija.qoldiq - hozirgi_qoldiq
             if farq > 0:
                 add_debt(magazin, farq, "QARZ", f"AUTO QOLDIQ TUZATISH | {xabar}", kim)
@@ -1721,7 +1721,7 @@ async def qarz_yoz_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update.effective_chat.id, update.message.message_id,
     )
 
-    qoldiq = get_debt_balance(magazin)
+    qoldiq = get_debt_balance(magazin, qarz_boshlanish_sanasi())
     harakat_matni = "Qarz qo'shildi" if harakat == "QARZ" else "To'lov qayd etildi"
     await update.message.reply_text(
         f"✅ {harakat_matni}: {magazin} — {summa:,} so‘m".replace(",", " ")
@@ -2291,13 +2291,51 @@ async def oylik(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_long_message(update.message, report)
     except Exception as e:
         await update.message.reply_text(f"❌ Oylik davomatni olishda xato: {e}")
+QARZ_BOSHLANISH_KEY = "qarz_boshlanish_sanasi"
+
+
+def qarz_boshlanish_sanasi():
+    """Qarz hisobi qaysi sanadan boshlab yuritilishi (masalan eski, chalkash
+    yozuvlarni e'tiborsiz qoldirish uchun). Sozlanmagan bo'lsa — butun tarix hisoblanadi."""
+    return get_setting(QARZ_BOSHLANISH_KEY, "") or None
+
+
+async def qarz_bosh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        hozirgi = qarz_boshlanish_sanasi()
+        matn = hozirgi if hozirgi else "belgilanmagan (butun tarix hisoblanmoqda)"
+        await update.message.reply_text(
+            f"📅 Qarz hisobi boshlanish sanasi: {matn}\n\n"
+            "O'zgartirish uchun: /qarz_bosh 2026-09-19\n"
+            "Butun tarixni hisoblashga qaytarish uchun: /qarz_bosh hammasi"
+        )
+        return
+    qiymat = context.args[0]
+    if qiymat.lower() in ("hammasi", "barchasi", "off"):
+        set_setting(QARZ_BOSHLANISH_KEY, "")
+        await update.message.reply_text("✅ Qarz hisobi endi butun tarix bo'yicha yuritiladi.")
+        return
+    if not XOMASHYO_DATE_RE.match(qiymat):
+        await update.message.reply_text("❌ Sanani YYYY-MM-DD ko'rinishida yozing. Masalan: 2026-09-19")
+        return
+    set_setting(QARZ_BOSHLANISH_KEY, qiymat)
+    await update.message.reply_text(
+        f"✅ Qarz hisobi endi {qiymat} sanasidan boshlab yuritiladi.\n"
+        "Bu sanadan oldingi yozuvlar bazada saqlanadi, lekin hisobotga kirmaydi."
+    )
+
+
 async def qarz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        boshlanish = qarz_boshlanish_sanasi()
         sana = context.args[0] if context.args else uz_today()
         kunlik = get_debt_daily_summary(sana)
-        rows = get_debt_summary()
+        rows = get_debt_summary(boshlanish)
 
-        text = "Bismillahir rohmanir rohim\n\n💰 SORO — QARZDORLIKLAR\n\n"
+        text = "Bismillahir rohmanir rohim\n\n💰 SORO — QARZDORLIKLAR\n"
+        if boshlanish:
+            text += f"(hisob {boshlanish} sanasidan boshlab yuritilmoqda)\n"
+        text += "\n"
         text += f"📅 {sana}:\n"
         text += f"📥 Qarzga berildi: {kunlik['QARZ']:,} so‘m\n".replace(",", " ")
         text += f"📤 Qaytarildi (to‘lov): {kunlik['TULOV']:,} so‘m\n".replace(",", " ")
@@ -2416,6 +2454,9 @@ def build_application():
     )
     app.add_handler(
         CommandHandler("qarz", admin_only(qarz))
+    )
+    app.add_handler(
+        CommandHandler("qarz_bosh", admin_only(qarz_bosh))
     )
     app.add_handler(
         CommandHandler("xomashyo_hisobot", admin_only(xomashyo_hisobot))
