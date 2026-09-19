@@ -1672,13 +1672,43 @@ def qarz_holat_matni(magazin):
     return "💵 Hozirgi qarz holati: 0 so‘m"
 
 
+async def qarz_msg_yubor(update: Update, context: ContextTypes.DEFAULT_TYPE, matn, reply_markup=None):
+    """Oldingi qarz_yoz xabarini (masalan uzun do'konlar ro'yxatini) o'chirib,
+    o'rniga yangisini yuboradi — shunda suhbat davomida faqat bitta xabar
+    ko'rinib turadi va guruhda ortiqcha joy egallamaydi."""
+    chat_id = update.effective_chat.id
+    eski_id = context.user_data.get("qarz_msg_id")
+    if eski_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=eski_id)
+        except Exception:
+            pass
+    yangi = await context.bot.send_message(chat_id=chat_id, text=matn, reply_markup=reply_markup)
+    context.user_data["qarz_msg_id"] = yangi.message_id
+    return yangi
+
+
+async def qarz_msg_tugat(update: Update, context: ContextTypes.DEFAULT_TYPE, matn):
+    """Suhbat tugaganda (yakuniy hisobot yoki bekor qilish) oldingi xabarni
+    o'chirib, natijani oddiy, doimiy xabar sifatida yuboradi."""
+    chat_id = update.effective_chat.id
+    eski_id = context.user_data.pop("qarz_msg_id", None)
+    if eski_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=eski_id)
+        except Exception:
+            pass
+    await context.bot.send_message(chat_id=chat_id, text=matn)
+
+
 async def qarz_yoz_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not DEBT_GROUP_CHAT_ID or str(update.effective_chat.id) != str(DEBT_GROUP_CHAT_ID):
         await update.message.reply_text("Bu buyruq faqat qarz guruhida ishlaydi.")
         return ConversationHandler.END
     shops = get_debt_shops()
     context.user_data["qarz_shops"] = shops
-    await update.message.reply_text(
+    await qarz_msg_yubor(
+        update, context,
         "🏪 Qaysi do'kon?\n\nRo'yxatdan tanlang yoki nomini (bosh harflarini ham) yozib qidiring:",
         reply_markup=qarz_shop_keyboard(shops),
     )
@@ -1689,15 +1719,16 @@ async def qarz_yoz_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "qzcancel":
-        await query.edit_message_text("❌ Bekor qilindi.")
+        await qarz_msg_tugat(update, context, "❌ Bekor qilindi.")
         return ConversationHandler.END
     if query.data == "qznew":
         await query.edit_message_text("✍️ Do'kon nomini yozing:")
+        context.user_data["qarz_msg_id"] = query.message.message_id
         return QY_NEW_SHOP
     index = int(query.data.split(":")[1])
     shops = context.user_data.get("qarz_shops", [])
     if index >= len(shops):
-        await query.edit_message_text("❌ Do'kon topilmadi, qaytadan /qarz_yoz yozing.")
+        await qarz_msg_tugat(update, context, "❌ Do'kon topilmadi, qaytadan /qarz_yoz yozing.")
         return ConversationHandler.END
     magazin = shops[index]
     context.user_data["qarz_shop_name"] = magazin
@@ -1705,6 +1736,7 @@ async def qarz_yoz_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏪 Do'kon: {magazin}\n{qarz_holat_matni(magazin)}\n\nQarz yoki to'lov?",
         reply_markup=qarz_action_keyboard(),
     )
+    context.user_data["qarz_msg_id"] = query.message.message_id
     return QY_ACTION
 
 
@@ -1713,7 +1745,7 @@ async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYP
     if not matn:
         return QY_SHOP
     if matn.casefold() in ("yangi", "янги"):
-        await update.message.reply_text("✍️ Do'kon nomini yozing:")
+        await qarz_msg_yubor(update, context, "✍️ Do'kon nomini yozing:")
         return QY_NEW_SHOP
 
     barcha = context.user_data.get("qarz_shops") or get_debt_shops()
@@ -1723,21 +1755,24 @@ async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYP
     if len(mos) == 1:
         magazin = mos[0]
         context.user_data["qarz_shop_name"] = magazin
-        await update.message.reply_text(
+        await qarz_msg_yubor(
+            update, context,
             f"🏪 Do'kon: {magazin}\n{qarz_holat_matni(magazin)}\n\nQarz yoki to'lov?",
             reply_markup=qarz_action_keyboard(),
         )
         return QY_ACTION
 
     if not mos:
-        await update.message.reply_text(
+        await qarz_msg_yubor(
+            update, context,
             f"❌ \"{matn}\" bo'yicha do'kon topilmadi.\n"
             "Boshqa nom bilan qidiring, yoki yangi do'kon uchun «yangi» deb yozing."
         )
         return QY_SHOP
 
     context.user_data["qarz_shops"] = mos
-    await update.message.reply_text(
+    await qarz_msg_yubor(
+        update, context,
         f"🔎 \"{matn}\" bo'yicha {len(mos)} ta do'kon topildi:",
         reply_markup=qarz_shop_keyboard(mos),
     )
@@ -1747,10 +1782,11 @@ async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYP
 async def qarz_yoz_new_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nom = update.message.text.strip()
     if not nom:
-        await update.message.reply_text("✍️ Do'kon nomini yozing:")
+        await qarz_msg_yubor(update, context, "✍️ Do'kon nomini yozing:")
         return QY_NEW_SHOP
     context.user_data["qarz_shop_name"] = nom
-    await update.message.reply_text(
+    await qarz_msg_yubor(
+        update, context,
         f"🏪 Do'kon: {nom}\n{qarz_holat_matni(nom)}\n\nQarz yoki to'lov?",
         reply_markup=qarz_action_keyboard(),
     )
@@ -1761,12 +1797,13 @@ async def qarz_yoz_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data == "qzcancel":
-        await query.edit_message_text("❌ Bekor qilindi.")
+        await qarz_msg_tugat(update, context, "❌ Bekor qilindi.")
         return ConversationHandler.END
     harakat = query.data.split(":")[1]
     context.user_data["qarz_action"] = harakat
     matn = "Necha so'm qarz berdingiz?" if harakat == "QARZ" else "Necha so'm to'lov oldingiz?"
     await query.edit_message_text(f"💵 {matn}")
+    context.user_data["qarz_msg_id"] = query.message.message_id
     return QY_AMOUNT
 
 
@@ -1774,10 +1811,10 @@ async def qarz_yoz_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         summa = int(clean_number(update.message.text))
     except ValueError:
-        await update.message.reply_text("❌ Summani raqamda yozing. Masalan: 500000")
+        await qarz_msg_yubor(update, context, "❌ Summani raqamda yozing. Masalan: 500000")
         return QY_AMOUNT
     if summa <= 0:
-        await update.message.reply_text("❌ Summa noldan katta bo'lishi kerak.")
+        await qarz_msg_yubor(update, context, "❌ Summa noldan katta bo'lishi kerak.")
         return QY_AMOUNT
 
     magazin = context.user_data.get("qarz_shop_name")
@@ -1790,7 +1827,8 @@ async def qarz_yoz_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     qoldiq = get_debt_balance(magazin, qarz_boshlanish_sanasi())
     harakat_matni = "Qarz qo'shildi" if harakat == "QARZ" else "To'lov qayd etildi"
-    await update.message.reply_text(
+    await qarz_msg_tugat(
+        update, context,
         f"✅ {harakat_matni}: {magazin} — {summa:,} so‘m".replace(",", " ")
         + f"\n💰 Joriy qoldiq: {qoldiq:,} so‘m".replace(",", " ")
     )
@@ -1801,7 +1839,7 @@ async def qarz_yoz_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def qarz_yoz_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Bekor qilindi.")
+    await qarz_msg_tugat(update, context, "❌ Bekor qilindi.")
     return ConversationHandler.END
 
 

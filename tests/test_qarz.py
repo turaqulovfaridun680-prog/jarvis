@@ -164,23 +164,42 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         )
         self.query = SimpleNamespace(
             data="", answer=AsyncMock(), edit_message_text=AsyncMock(),
+            message=SimpleNamespace(message_id=500),
         )
         self.update = SimpleNamespace(
             message=self.message, callback_query=self.query,
             effective_chat=SimpleNamespace(id="-5026417146"),
             effective_user=SimpleNamespace(first_name="Sotuvchi Vali"),
         )
-        self.context = SimpleNamespace(user_data={})
+        self._bot_msg_id = 1000
+
+        async def _send_message(chat_id, text, reply_markup=None):
+            self._bot_msg_id += 1
+            return SimpleNamespace(message_id=self._bot_msg_id, text=text, reply_markup=reply_markup)
+
+        self.context = SimpleNamespace(
+            user_data={},
+            bot=SimpleNamespace(
+                send_message=AsyncMock(side_effect=_send_message),
+                delete_message=AsyncMock(),
+            ),
+        )
 
     def _restore_db_path(self):
         jarvis_database.DB_PATH = self.old_path
+
+    def last_bot_text(self):
+        return self.context.bot.send_message.call_args.kwargs["text"]
+
+    def last_bot_markup(self):
+        return self.context.bot.send_message.call_args.kwargs["reply_markup"]
 
     async def test_full_flow_records_debt_for_existing_shop(self):
         jarvis_database.add_debt("Chinor 2", 100000, "QARZ", "boshlang'ich", "Sotuvchi Vali")
 
         state = await app.qarz_yoz_start(self.update, self.context)
         self.assertEqual(state, app.QY_SHOP)
-        keyboard = self.message.reply_text.call_args.kwargs["reply_markup"].inline_keyboard
+        keyboard = self.last_bot_markup().inline_keyboard
         self.assertTrue(any(b.text == "Chinor 2" for row in keyboard for b in row))
 
         self.query.data = "qzs:0"
@@ -200,7 +219,7 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][0], "Chinor 2")
         self.assertEqual(rows[0][2], 150000)
-        report = self.message.reply_text.call_args.args[0]
+        report = self.last_bot_text()
         self.assertIn("50 000", report)
         self.assertIn("150 000", report)
 
@@ -226,6 +245,34 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
 
         rows = jarvis_database.get_debt_summary()
         self.assertEqual(rows[0], ("Yangi Bozor", "Sotuvchi Vali", -30000))
+
+    async def test_each_step_deletes_the_previous_bot_message(self):
+        jarvis_database.add_debt("Chinor 2", 100000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        first_msg_id = self.context.user_data["qarz_msg_id"]
+
+        self.message.text = "chinor"
+        await app.qarz_yoz_shop_search(self.update, self.context)
+        second_msg_id = self.context.user_data["qarz_msg_id"]
+
+        self.context.bot.delete_message.assert_any_await(
+            chat_id="-5026417146", message_id=first_msg_id
+        )
+        self.assertNotEqual(first_msg_id, second_msg_id)
+
+        self.query.data = "qzt:QARZ"
+        # Real Telegram callbacks come from the exact message with the buttons.
+        self.query.message.message_id = second_msg_id
+        await app.qarz_yoz_action(self.update, self.context)
+        self.message.text = "10000"
+        await app.qarz_yoz_amount(self.update, self.context)
+
+        # Yakuniy hisobot yuborilishidan oldin ham oxirgi so'rov xabari o'chiriladi.
+        self.context.bot.delete_message.assert_any_await(
+            chat_id="-5026417146", message_id=second_msg_id
+        )
+        self.assertNotIn("qarz_msg_id", self.context.user_data)
 
     async def test_invalid_amount_is_rejected_and_stays_in_state(self):
         self.context.user_data["qarz_shop_name"] = "Chinor 2"
@@ -269,7 +316,7 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state, app.QY_ACTION)
         self.assertEqual(self.context.user_data["qarz_shop_name"], "Chinor 2")
-        shown = self.message.reply_text.call_args.args[0]
+        shown = self.last_bot_text()
         self.assertIn("Hozirgi qarz holati: 300 000", shown)
 
     async def test_typing_ambiguous_prefix_shows_filtered_list(self):
@@ -282,7 +329,7 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         state = await app.qarz_yoz_shop_search(self.update, self.context)
 
         self.assertEqual(state, app.QY_SHOP)
-        keyboard = self.message.reply_text.call_args.kwargs["reply_markup"].inline_keyboard
+        keyboard = self.last_bot_markup().inline_keyboard
         names = {b.text for row in keyboard for b in row}
         self.assertIn("Chinor 2", names)
         self.assertIn("Chinor Bozor", names)
@@ -293,7 +340,7 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.message.text = "Notanish Market"
         state = await app.qarz_yoz_shop_search(self.update, self.context)
         self.assertEqual(state, app.QY_SHOP)
-        self.assertIn("topilmadi", self.message.reply_text.call_args.args[0])
+        self.assertIn("topilmadi", self.last_bot_text())
 
     async def test_search_matches_only_the_beginning_of_the_name(self):
         # "Market" so'zi "Bek Market" ichida bor, lekin nomning BOSHIDA emas.
