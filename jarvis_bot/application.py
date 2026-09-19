@@ -1645,6 +1645,24 @@ def qarz_action_keyboard():
     ])
 
 
+KIRIL_LOTIN_JADVAL = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
+    "ж": "j", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "x", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch",
+    "ъ": "", "ы": "i", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+    "ў": "o'", "қ": "q", "ғ": "g'", "ҳ": "h",
+}
+
+
+def qarz_qidiruv_kaliti(matn):
+    """Kiril va lotin alifbosida yozilgan nomlarni solishtirish uchun bitta
+    ko'rinishga (lotin) keltiradi, shunda qaysi alifboda qidirilishidan
+    qat'i nazar mos do'kon topiladi."""
+    past = matn.lower()
+    return "".join(KIRIL_LOTIN_JADVAL.get(harf, harf) for harf in past)
+
+
 def qarz_holat_matni(magazin):
     qoldiq = get_debt_balance(magazin, qarz_boshlanish_sanasi())
     if qoldiq > 0:
@@ -1699,8 +1717,8 @@ async def qarz_yoz_shop_search(update: Update, context: ContextTypes.DEFAULT_TYP
         return QY_NEW_SHOP
 
     barcha = context.user_data.get("qarz_shops") or get_debt_shops()
-    qidiruv_cf = matn.casefold()
-    mos = [d for d in barcha if d.casefold().startswith(qidiruv_cf)]
+    qidiruv_kaliti = qarz_qidiruv_kaliti(matn)
+    mos = [d for d in barcha if qarz_qidiruv_kaliti(d).startswith(qidiruv_kaliti)]
 
     if len(mos) == 1:
         magazin = mos[0]

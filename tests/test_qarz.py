@@ -307,6 +307,26 @@ class QarzYozFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state, app.QY_ACTION)
         self.assertEqual(self.context.user_data["qarz_shop_name"], "Market Plus")
 
+    async def test_cyrillic_query_matches_latin_shop_name(self):
+        jarvis_database.add_debt("Chinor 2", 300000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "чинор"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+
+        self.assertEqual(state, app.QY_ACTION)
+        self.assertEqual(self.context.user_data["qarz_shop_name"], "Chinor 2")
+
+    async def test_latin_query_matches_cyrillic_shop_name(self):
+        jarvis_database.add_debt("Алишер Согдиана", 500000, "QARZ", "", "Sotuvchi Vali")
+
+        await app.qarz_yoz_start(self.update, self.context)
+        self.message.text = "alisher"
+        state = await app.qarz_yoz_shop_search(self.update, self.context)
+
+        self.assertEqual(state, app.QY_ACTION)
+        self.assertEqual(self.context.user_data["qarz_shop_name"], "Алишер Согдиана")
+
     async def test_typing_yangi_keyword_starts_new_shop_flow(self):
         await app.qarz_yoz_start(self.update, self.context)
         self.message.text = "yangi"
