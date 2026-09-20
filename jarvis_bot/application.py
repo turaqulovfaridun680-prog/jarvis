@@ -51,6 +51,7 @@ from .database import (
     delete_debt,
 )
 from .config import ROOT_DIR, settings
+from .ai_provider import javob_ol_async
 
 BASE_DIR = ROOT_DIR
 OPENAI_API_KEY = settings.openai_api_key
@@ -1403,13 +1404,7 @@ Oldingi suhbat:
 Foydalanuvchining oxirgi xabariga javob ber.
 """
 
-    response = await asyncio.to_thread(
-        client.responses.create,
-        model="gpt-5.6",
-        input=prompt,
-    )
-
-    javob = response.output_text.strip()
+    javob = await javob_ol_async(client, prompt)
 
     save_chat(chat_id, "assistant", javob)
 
